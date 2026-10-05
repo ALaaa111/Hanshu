@@ -555,6 +555,35 @@
   </div>
 </div>
 
+<!-- ======================= 手机竖屏提示层：请横过来 ======================= -->
+<div class="rotate-overlay" id="rotate-overlay">
+  <div class="rotate-inner">
+    <div class="rotate-phone" aria-hidden="true"></div>
+    <div class="rotate-text">请把手机横过来再玩</div>
+    <div class="rotate-sub">函数战争需要横向屏幕，才能看清整个战场与函数弹道。</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var tried = false;
+  function tryLockLandscape() {
+    if (tried) return;
+    tried = true;
+    try {
+      if (screen.orientation && typeof screen.orientation.lock === 'function') {
+        var p = screen.orientation.lock('landscape');
+        if (p && p.catch) p.catch(function () {});
+      }
+    } catch (e) {}
+  }
+  ['click', 'touchstart'].forEach(function (ev) {
+    document.addEventListener(ev, tryLockLandscape, { passive: true });
+  });
+})();
+</script>
+
+<script src="js/constants.js"></script>
 <script src="js/constants.js"></script>
 <script src="js/expression.js"></script>
 <script src="js/terrain.js"></script>
