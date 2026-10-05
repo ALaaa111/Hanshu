@@ -782,7 +782,10 @@ input { font-family: inherit; }
   .quick-row { display: none; }
   .fb-label { display: none; }
 }
-/* 手机竖屏提示：请横过来 */
+
+/* ============================================================
+ * 手机竖屏提示：请横过来（桌面 / 横屏不出现）
+ * ============================================================ */
 .rotate-overlay {
   position: fixed; inset: 0; z-index: 9999;
   display: none;
@@ -808,6 +811,7 @@ input { font-family: inherit; }
 .rotate-text { font-size: 21px; font-weight: 700; line-height: 1.4; margin-bottom: 8px; }
 .rotate-sub { font-size: 14px; color: var(--text-soft); line-height: 1.5; }
 
+/* 仅在手机竖屏时弹出，平板横屏与桌面都不受影响 */
 @media (orientation: portrait) and (max-width: 900px) {
   .rotate-overlay { display: flex; }
 }

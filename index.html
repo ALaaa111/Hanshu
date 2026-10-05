@@ -565,6 +565,7 @@
 </div>
 
 <script>
+/* 首次在页面上点击/触摸时，尽量把屏幕锁成横屏（仅安卓全屏下生效，失败无妨；iOS 用上方盖屏提示兜底） */
 (function () {
   var tried = false;
   function tryLockLandscape() {
@@ -583,7 +584,6 @@
 })();
 </script>
 
-<script src="js/constants.js"></script>
 <script src="js/constants.js"></script>
 <script src="js/expression.js"></script>
 <script src="js/terrain.js"></script>
