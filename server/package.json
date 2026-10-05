@@ -1,0 +1,10 @@
+{
+  "name": "function-war-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "函数战争联机服务器（零依赖，仅用 Node 内置模块）",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

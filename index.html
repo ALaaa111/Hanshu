@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2f9e5c">
+<title>函数战争 · Graphwar 中文复刻版</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ======================= 主菜单 ======================= -->
+  <section class="screen screen-center active" id="screen-menu">
+    <div class="menu-card">
+      <h1 class="logo">
+        <span class="logo-shadow" aria-hidden="true">函数战争</span>
+        <span class="logo-fill">函数战争</span>
+      </h1>
+      <div class="logo-rule"><i></i><span>G R A P H W A R</span><i></i></div>
+      <p class="logo-sub">写一条函数，让它从士兵脚下飞出去</p>
+      <div class="menu-buttons">
+        <button class="btn btn-primary btn-lg" id="btn-menu-start">开始对战</button>
+        <button class="btn btn-ghost btn-lg" id="btn-menu-online">联机对战</button>
+        <button class="btn btn-ghost btn-lg" id="btn-menu-tutorial">新手教程</button>
+        <button class="btn btn-ghost btn-lg" id="btn-menu-help">玩法说明</button>
+      </div>
+      <p class="menu-foot">中文版 v3.1 · 纯前端运行，双击即玩；联机需启动服务器 node server/server.js</p>
+    </div>
+  </section>
+
+  <!-- ======================= 对战设置 ======================= -->
+  <section class="screen screen-center" id="screen-setup">
+    <div class="setup-card">
+      <h2 class="card-title">对战设置</h2>
+
+      <div class="field-group">
+        <label class="field-label">对战形式</label>
+        <div class="seg" id="seg-opponent">
+          <button class="seg-item active" data-value="human">双人对战（同屏轮流）</button>
+          <button class="seg-item" data-value="ai">人机对战（电脑执子）</button>
+          <button class="seg-item" data-value="multi">多人模式（多队对抗）</button>
+        </div>
+        <p class="field-hint" id="opponent-hint">双方各带若干名士兵，轮流开炮。</p>
+      </div>
+
+      <div class="field-group">
+        <label class="field-label">弹道规则（函数模式）</label>
+        <div class="seg" id="seg-mode">
+          <button class="seg-item active" data-value="0">普通函数 y = f(x)</button>
+          <button class="seg-item" data-value="1">一阶微分方程 y' = f(x, y)</button>
+          <button class="seg-item" data-value="2">二阶微分方程 y'' = f(x, y, y')</button>
+        </div>
+        <p class="field-hint" id="mode-hint"></p>
+      </div>
+
+      <div class="field-row">
+        <div class="field-group" id="group-soldiers">
+          <label class="field-label">每方士兵</label>
+          <div class="seg" id="seg-soldiers">
+            <button class="seg-item" data-value="1">1 名</button>
+            <button class="seg-item active" data-value="2">2 名</button>
+            <button class="seg-item" data-value="3">3 名</button>
+            <button class="seg-item" data-value="4">4 名</button>
+          </div>
+        </div>
+        <div class="field-group" id="group-players">
+          <label class="field-label">玩家数（同屏轮流 · 每人 1 兵）</label>
+          <div class="seg" id="seg-players">
+            <button class="seg-item active" data-value="2">2 人</button>
+            <button class="seg-item" data-value="3">3 人</button>
+            <button class="seg-item" data-value="4">4 人</button>
+            <button class="seg-item" data-value="6">6 人</button>
+            <button class="seg-item" data-value="8">8 人</button>
+          </div>
+          <div class="field-note" id="players-note">2 人 = 1v1，每人 2 名士兵。</div>
+        </div>
+        <div class="field-group" id="group-difficulty">
+          <label class="field-label">电脑难度</label>
+          <div class="seg" id="seg-difficulty">
+            <button class="seg-item" data-value="1">新兵</button>
+            <button class="seg-item active" data-value="2">老兵</button>
+            <button class="seg-item" data-value="3">战术核心</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 多人模式专用赛制：先选队伍总数，再选每队人数，总人数自动算出 -->
+      <div class="field-group hidden" id="group-roster">
+        <label class="field-label">多人赛制</label>
+        <div class="roster-row">
+          <div class="field-group">
+            <span class="field-label-sm">队伍总数</span>
+            <div class="seg" id="seg-teams">
+              <button class="seg-item active" data-value="2">2 队</button>
+              <button class="seg-item" data-value="3">3 队</button>
+              <button class="seg-item" data-value="4">4 队</button>
+            </div>
+          </div>
+          <div class="field-group">
+            <span class="field-label-sm">每队人数</span>
+            <div class="seg" id="seg-perteam">
+              <button class="seg-item active" data-value="1">1 人</button>
+              <button class="seg-item" data-value="2">2 人</button>
+              <button class="seg-item" data-value="3">3 人</button>
+              <button class="seg-item" data-value="4">4 人</button>
+            </div>
+          </div>
+        </div>
+        <div class="field-note" id="roster-note"></div>
+      </div>
+
+      <div class="setup-actions">
+        <button class="btn btn-ghost" id="btn-setup-back">返回菜单</button>
+        <button class="btn btn-primary" id="btn-setup-start">进入战场</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= 联机大厅 ======================= -->
+  <section class="screen screen-center" id="screen-lobby">
+    <div class="lobby-card">
+      <h2 class="card-title">联机对战</h2>
+
+      <div class="field-group">
+        <label class="field-label">连接方式</label>
+        <div class="seg" id="seg-mp-link">
+          <button class="seg-item active" data-value="server">服务器联机</button>
+          <button class="seg-item" data-value="p2p">点对点联机（不用服务器）</button>
+        </div>
+        <p class="field-hint" id="mp-link-hint">需要一台常开的服务器（<code>node server/server.js</code>）；双方都能连上它即可对战。</p>
+      </div>
+
+      <div class="field-group" id="mp-url-row">
+        <label class="field-label">服务器地址</label>
+        <input type="text" id="mp-url" class="expr-input" placeholder="ws://localhost:8080" autocomplete="off">
+        <p class="field-hint">默认指向当前打开本游戏的服务器。跨设备时改成房主的公网 IP，例如 ws://203.0.113.5:8080。</p>
+      </div>
+
+      <div class="p2p-box hidden" id="p2p-box">
+        <p class="field-hint">房主的浏览器就是服务器，两台设备直连，对局数据不经过任何第三方。
+          只需来回复制<b>一次</b>连接码：房主生成「邀请码」→ 客人粘贴后生成「回执码」→ 房主粘贴回执码即可开打。</p>
+        <div class="p2p-row">
+          <button class="btn btn-primary btn-sm" id="btn-p2p-host">① 我是房主：生成邀请码</button>
+          <button class="btn btn-ghost btn-sm" id="btn-p2p-guest">① 我加入：贴邀请码生成回执码</button>
+        </div>
+        <label class="field-label">我的连接码（复制发给对方）</label>
+        <textarea id="p2p-out" class="p2p-code" rows="3" readonly
+                  placeholder="点上面任意一个按钮后，这里会出现一串连接码"></textarea>
+        <div class="p2p-row">
+          <button class="btn btn-mini" id="btn-p2p-copy">复制我的连接码</button>
+        </div>
+        <label class="field-label">对方的连接码（粘贴到这里）</label>
+        <textarea id="p2p-in" class="p2p-code" rows="3"
+                  placeholder="把对方发来的那一整串码粘贴到这里（首尾不要漏）"></textarea>
+        <div class="p2p-row">
+          <button class="btn btn-ghost btn-sm" id="btn-p2p-connect">② 房主：贴回执码 → 开始对战</button>
+        </div>
+      </div>
+
+      <div class="lobby-cols" id="lobby-cols">
+        <div class="lobby-col">
+          <h3 class="lobby-h">创建房间</h3>
+          <div class="field-group">
+            <label class="field-label">弹道模式</label>
+            <div class="seg" id="seg-mp-mode">
+              <button class="seg-item active" data-value="0">普通函数</button>
+              <button class="seg-item" data-value="1">一阶方程</button>
+              <button class="seg-item" data-value="2">二阶方程</button>
+            </div>
+          </div>
+          <div class="field-group">
+            <label class="field-label">每方士兵</label>
+            <div class="seg" id="seg-mp-soldiers">
+              <button class="seg-item" data-value="1">1 名</button>
+              <button class="seg-item active" data-value="2">2 名</button>
+              <button class="seg-item" data-value="3">3 名</button>
+              <button class="seg-item" data-value="4">4 名</button>
+            </div>
+          </div>
+          <div class="field-group">
+            <label class="field-label">多人赛制</label>
+            <div class="roster-row">
+              <div class="field-group">
+                <span class="field-label-sm">队伍总数</span>
+                <div class="seg" id="seg-mp-teams">
+                  <button class="seg-item active" data-value="2">2 队</button>
+                  <button class="seg-item" data-value="3">3 队</button>
+                  <button class="seg-item" data-value="4">4 队</button>
+                </div>
+              </div>
+              <div class="field-group">
+                <span class="field-label-sm">每队人数</span>
+                <div class="seg" id="seg-mp-perteam">
+                  <button class="seg-item active" data-value="1">1 人</button>
+                  <button class="seg-item" data-value="2">2 人</button>
+                  <button class="seg-item" data-value="3">3 人</button>
+                  <button class="seg-item" data-value="4">4 人</button>
+                </div>
+              </div>
+            </div>
+            <div class="field-note" id="mp-roster-note"></div>
+          </div>
+          <button class="btn btn-primary btn-lg" id="btn-mp-create">创建并等待对手</button>
+          <label class="check-inline lobby-fillai">
+            <input type="checkbox" id="chk-mp-fillai">
+            <span>人机补齐：无对手时用 AI 顶替（含掉线接管）</span>
+          </label>
+        </div>
+
+        <div class="lobby-col">
+          <h3 class="lobby-h">加入房间</h3>
+          <div class="field-group">
+            <label class="field-label">房间号</label>
+            <input type="text" id="mp-code" class="expr-input" placeholder="例如 A1B2" maxlength="8" autocomplete="off">
+          </div>
+          <button class="btn btn-ghost btn-lg" id="btn-mp-join">加入房间</button>
+          <button class="btn btn-ghost btn-sm hidden" id="btn-mp-copy">复制房号</button>
+        </div>
+      </div>
+
+      <div class="lobby-status hidden" id="lobby-status"></div>
+
+      <div class="share-box hidden" id="mp-share"></div>
+
+      <div class="lobby-actions">
+        <button class="btn btn-ghost btn-sm" id="btn-mp-tutorial">联机教程</button>
+        <button class="btn btn-ghost" id="btn-mp-back">返回菜单</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= 对战界面 ======================= -->
+  <section class="screen" id="screen-game">
+    <header class="topbar">
+      <div class="topbar-left">
+        <span class="brand">函数战争</span>
+        <span class="badge" id="badge-mode">普通函数模式</span>
+      </div>
+      <div class="topbar-center">
+        <div class="turn-line">
+          <span id="turn-owner" class="turn-owner">绿方行动</span>
+          <span class="turn-sep">·</span>
+          <span id="turn-tip" class="turn-tip">请输入函数后发射</span>
+        </div>
+        <div class="timer-bar"><div class="timer-fill" id="timer-fill"></div></div>
+        <div class="timer-text"><span id="timer-text">120.0</span> 秒</div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-mini hidden" id="btn-quick">快捷语</button>
+        <button class="btn btn-mini hidden" id="btn-skill" title="使用开局选择的技能（每局一次，消耗本回合）">技能</button>
+        <button class="btn btn-mini" id="btn-help">规则</button>
+        <button class="btn btn-mini" id="btn-restart">重开</button>
+        <button class="btn btn-mini" id="btn-quit">退出</button>
+      </div>
+    </header>
+
+    <!-- 全屏顶部：各方战况 + 刚刚操作的函数数值 -->
+    <div class="funcbar" id="funcbar">
+      <div class="fb-team t1" id="fb-team-1">
+        <div class="fb-head">
+          <span class="team-dot dot-t1"></span>
+          <span class="fb-name" id="fb-name-1">绿方·1号</span>
+          <span class="fb-score" id="score-t1">0 分</span>
+        </div>
+        <div class="fb-line">
+          <div class="soldier-row" id="soldiers-t1"></div>
+          <span class="team-stat" id="stat-t1">命中 0 · 误伤 0</span>
+        </div>
+      </div>
+
+      <div class="fb-team t2" id="fb-team-2">
+        <div class="fb-head">
+          <span class="team-dot dot-t2"></span>
+          <span class="fb-name" id="fb-name-2">青方·1号</span>
+          <span class="fb-score" id="score-t2">0 分</span>
+        </div>
+        <div class="fb-line">
+          <div class="soldier-row" id="soldiers-t2"></div>
+          <span class="team-stat" id="stat-t2">命中 0 · 误伤 0</span>
+        </div>
+      </div>
+
+      <div class="fb-main" id="fb-main">
+        <div class="fb-label" id="func-label">当前弹道指令</div>
+        <div class="fb-expr" id="func-display">等待第一条指令…</div>
+      </div>
+
+      <div class="fb-team t3 hidden" id="fb-team-3">
+        <div class="fb-head">
+          <span class="team-dot dot-t3"></span>
+          <span class="fb-name" id="fb-name-3">绿方·2号</span>
+          <span class="fb-score" id="score-t3">0 分</span>
+        </div>
+        <div class="fb-line">
+          <div class="soldier-row" id="soldiers-t3"></div>
+          <span class="team-stat" id="stat-t3">命中 0 · 误伤 0</span>
+        </div>
+      </div>
+
+      <div class="fb-team t4 hidden" id="fb-team-4">
+        <div class="fb-head">
+          <span class="team-dot dot-t4"></span>
+          <span class="fb-name" id="fb-name-4">青方·2号</span>
+          <span class="fb-score" id="score-t4">0 分</span>
+        </div>
+        <div class="fb-line">
+          <div class="soldier-row" id="soldiers-t4"></div>
+          <span class="team-stat" id="stat-t4">命中 0 · 误伤 0</span>
+        </div>
+      </div>
+
+      <!-- 6 人 3v3 / 8 人 4v4 的额外席位（默认隐藏） -->
+      <div class="fb-team hidden" id="fb-team-5">
+        <div class="fb-head"><span class="team-dot dot-t1"></span>
+          <span class="fb-name" id="fb-name-5">绿方·3号</span><span class="fb-score" id="score-t5">0 分</span></div>
+        <div class="fb-line"><div class="soldier-row" id="soldiers-t5"></div>
+          <span class="team-stat" id="stat-t5">命中 0 · 误伤 0</span></div>
+      </div>
+      <div class="fb-team hidden" id="fb-team-6">
+        <div class="fb-head"><span class="team-dot dot-t2"></span>
+          <span class="fb-name" id="fb-name-6">青方·3号</span><span class="fb-score" id="score-t6">0 分</span></div>
+        <div class="fb-line"><div class="soldier-row" id="soldiers-t6"></div>
+          <span class="team-stat" id="stat-t6">命中 0 · 误伤 0</span></div>
+      </div>
+      <div class="fb-team hidden" id="fb-team-7">
+        <div class="fb-head"><span class="team-dot dot-t3"></span>
+          <span class="fb-name" id="fb-name-7">橙　方</span><span class="fb-score" id="score-t7">0 分</span></div>
+        <div class="fb-line"><div class="soldier-row" id="soldiers-t7"></div>
+          <span class="team-stat" id="stat-t7">命中 0 · 误伤 0</span></div>
+      </div>
+      <div class="fb-team hidden" id="fb-team-8">
+        <div class="fb-head"><span class="team-dot dot-t4"></span>
+          <span class="fb-name" id="fb-name-8">紫　方</span><span class="fb-score" id="score-t8">0 分</span></div>
+        <div class="fb-line"><div class="soldier-row" id="soldiers-t8"></div>
+          <span class="team-stat" id="stat-t8">命中 0 · 误伤 0</span></div>
+      </div>
+    </div>
+
+    <div class="game-grid">
+      <!-- 右侧：战场（占满整个区域，两块操作面板悬浮其上） -->
+      <div class="stage-wrap" id="stage-wrap">
+        <canvas id="stage" width="770" height="450"></canvas>
+        <div class="stage-toast hidden" id="stage-toast"></div>
+        <div class="stage-tip" id="stage-tip"></div>
+      </div>
+    </div>
+
+    <!-- 手机 / 小屏：两块面板改为底部标签页切换，一次只占屏幕下方一块，不压战场 -->
+    <div class="win-tabs" id="win-tabs">
+      <button class="win-tab active" id="win-tab-draw" data-sheet="draw">✎ 画函数</button>
+      <button class="win-tab" id="win-tab-console" data-sheet="console">⌨ 指令台</button>
+      <button class="win-tab" id="win-tab-none" data-sheet="none">▾ 让开战场</button>
+    </div>
+
+    <!-- 浮动次级窗口 ①：画函数（可拖动 / 可最小化） -->
+    <div class="win win-draw" id="panel-draw">
+      <div class="win-head" id="drag-draw">
+        <span class="win-title">画函数 · 只定方向</span>
+        <span class="win-actions">
+          <button class="btn btn-mini" id="btn-sketch-clear">清空</button>
+          <button class="win-min" id="win-min-draw" title="最小化 / 还原">—</button>
+        </span>
+      </div>
+      <div class="win-body" id="panel-draw-body">
+        <div class="sketch-wrap" id="sketch-wrap">
+          <canvas id="sketch"></canvas>
+        </div>
+        <div class="draw-ctrl">
+          <span class="dc-label">方向</span>
+          <button class="btn btn-mini" id="btn-rot-down">↺</button>
+          <input type="range" class="dc-range" id="sketch-rot" min="-180" max="180" step="1" value="0">
+          <button class="btn btn-mini" id="btn-rot-up">↻</button>
+          <span class="dc-val" id="sketch-rot-val">0°</span>
+          <button class="btn btn-mini" id="btn-rot-reset" title="把方向重置为 0°">归零</button>
+        </div>
+        <div class="draw-ctrl">
+          <span class="dc-label">大小</span>
+          <button class="btn btn-mini" id="btn-scale-down">−</button>
+          <input type="range" class="dc-range" id="sketch-scale" min="30" max="220" step="1" value="100">
+          <button class="btn btn-mini" id="btn-scale-up">＋</button>
+          <span class="dc-val" id="sketch-scale-val">1.00×</span>
+        </div>
+        <div class="draw-foot">
+          <span class="expr-status" id="sketch-status">按住拖动即可定方向，松手后可继续微调</span>
+          <button class="btn btn-fire" id="btn-sketch-fire">发射手绘弹道</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 浮动次级窗口 ②：写函数（计算器样式竖排，可拖动 / 可最小化） -->
+    <div class="win win-console" id="input-block">
+      <div class="win-head" id="drag-console">
+        <span class="win-title">写函数 · 指令台</span>
+        <span class="console-tag" id="current-soldier-tag">1 号兵</span>
+        <button class="win-min" id="win-min-console" title="最小化 / 还原">—</button>
+      </div>
+      <div class="win-body" id="panel-write">
+        <div class="action-row">
+          <div class="seg seg-slim" id="seg-action">
+            <button class="seg-item active" data-value="fire">攻击</button>
+            <button class="seg-item" data-value="move">位移</button>
+          </div>
+          <button class="btn btn-mini btn-skill" id="btn-skill" title="使用开局选择的技能（每局一次，消耗本回合）">技能</button>
+        </div>
+        <div class="move-row hidden" id="move-row">
+          <span class="dc-label">距离</span>
+          <input type="range" class="dc-range" id="move-dist" min="1" max="5" step="1" value="3">
+          <span class="dc-val" id="move-dist-val">3 格</span>
+        </div>
+        <div class="weapon-row" id="weapon-row">
+          <button class="weapon active" data-w="1" title="均衡：路径命中 40，落点爆炸">标准弹</button>
+          <button class="weapon" data-w="0" title="单发高伤：路径命中 70，落点大爆炸">重炮弹</button>
+          <button class="weapon" data-w="2" title="落点炸开 5 团弹片，每团 22 伤害">散　弹</button>
+        </div>
+        <div class="input-line">
+          <span class="expr-prefix" id="expr-prefix">y =</span>
+          <input type="text" id="expr-input" class="expr-input" autocomplete="off" spellcheck="false"
+                 placeholder="例如 ((x-3)^2)/20">
+        </div>
+        <div class="input-sub">
+          <div class="expr-status" id="expr-status">提示：输入表达式即可预览弹道，回车发射</div>
+          <div class="quick-row">
+            <span class="quick-label">示例</span>
+            <button class="chip" data-func="((x-3)^2)/20">抛物线</button>
+            <button class="chip" data-func="sin(x/20)*5">正弦波</button>
+            <button class="chip" data-func="ln(abs(x))">对数</button>
+          </div>
+        </div>
+        <div class="angle-row" id="angle-row">
+          <span class="angle-label">发射角</span>
+          <button class="btn btn-mini" id="btn-angle-down">下（↓）</button>
+          <div class="angle-bar"><div class="angle-fill" id="angle-fill"></div></div>
+          <button class="btn btn-mini" id="btn-angle-up">上（↑）</button>
+          <span class="angle-value" id="angle-value">0°</span>
+        </div>
+        <div class="keypad" id="keypad">
+          <button class="key key-num" data-ins="7">7</button>
+          <button class="key key-num" data-ins="8">8</button>
+          <button class="key key-num" data-ins="9">9</button>
+          <button class="key" data-ins="/">/</button>
+          <button class="key key-num" data-ins="4">4</button>
+          <button class="key key-num" data-ins="5">5</button>
+          <button class="key key-num" data-ins="6">6</button>
+          <button class="key" data-ins="*">×</button>
+          <button class="key key-num" data-ins="1">1</button>
+          <button class="key key-num" data-ins="2">2</button>
+          <button class="key key-num" data-ins="3">3</button>
+          <button class="key" data-ins="-">−</button>
+          <button class="key key-num" data-ins="0">0</button>
+          <button class="key key-num" data-ins=".">.</button>
+          <button class="key" data-ins="x">x</button>
+          <button class="key" data-ins="+">+</button>
+          <button class="key" data-ins="(">(</button>
+          <button class="key" data-ins=")">)</button>
+          <button class="key" data-ins="^">^</button>
+          <button class="key key-fn" data-ins="sqrt(">√x</button>
+          <button class="key key-fn" data-ins="abs(">|x|</button>
+          <button class="key key-fn" data-ins="sin(">sin</button>
+          <button class="key key-fn" data-ins="cos(">cos</button>
+          <button class="key key-fn" data-ins="tan(">tan</button>
+          <button class="key key-fn" data-ins="ln(">ln</button>
+          <button class="key key-fn" data-ins="log(">log</button>
+          <button class="key key-fn" data-ins="pi">π</button>
+          <button class="key key-fn" data-ins="e">e</button>
+          <button class="key key-go" id="key-fire-go">发射</button>
+        </div>
+        <button class="btn btn-fire btn-fire-main" id="btn-fire">发　射</button>
+      </div>
+    </div>
+
+    <!-- 联机快捷语弹层（仅联机对局时可用） -->
+    <div class="quick-pop hidden" id="quick-pop">
+      <div class="quick-pop-title">快捷语 · 点一下发给对手</div>
+      <div class="quick-pop-list" id="quick-pop-list"></div>
+    </div>
+  </section>
+</div>
+
+<!-- ======================= 新手教程 ======================= -->
+<div class="tutorial-layer hidden" id="tutorial-layer">
+  <div class="tut-mask" id="tut-mask"></div>
+  <div class="tut-card" id="tut-card">
+    <div class="tut-head">
+      <span class="tut-step-tag" id="tut-step-tag">第 1 / 9 步</span>
+      <div class="tut-head-actions">
+        <button class="btn btn-mini" id="tut-min">收起</button>
+        <button class="btn btn-mini" id="tut-exit">退出教程</button>
+      </div>
+    </div>
+    <div class="tut-scroll" id="tut-scroll">
+      <h3 class="tut-title" id="tut-title"></h3>
+      <div class="tut-body" id="tut-body"></div>
+    </div>
+    <div class="tut-foot">
+      <div class="tut-dots" id="tut-dots"></div>
+      <div class="tut-actions">
+        <button class="btn btn-ghost" id="tut-prev">上一步</button>
+        <button class="btn btn-primary" id="tut-next">下一步</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ======================= 开局技能选择 ======================= -->
+<div class="modal hidden" id="skill-modal">
+  <div class="modal-card skill-card">
+    <div class="modal-head">
+      <h3 id="skill-title">选择开局技能</h3>
+    </div>
+    <div class="modal-body">
+      <p class="field-hint" id="skill-hint">每名玩家各选一个技能，对局中可使用一次；使用后消耗本回合行动。</p>
+      <div class="skill-grid" id="skill-grid"></div>
+      <div class="skill-chosen" id="skill-chosen"></div>
+      <div class="skill-foot">
+        <button class="btn btn-ghost btn-mini" id="skill-back">← 上一位</button>
+        <button class="btn btn-primary" id="skill-ok">确定，进入战场</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ======================= 玩法说明 ======================= -->
+<div class="modal hidden" id="help-modal">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3>玩法说明 · 函数输入规则</h3>
+      <button class="modal-close" data-close="help-modal">×</button>
+    </div>
+    <div class="modal-body" id="help-body"></div>
+  </div>
+</div>
+
+<!-- ======================= 结算 ======================= -->
+<div class="modal hidden" id="result-modal">
+  <div class="modal-card result-card">
+    <div class="modal-head">
+      <h3 id="result-title">战斗结束</h3>
+    </div>
+    <div class="modal-body">
+      <div class="result-reason" id="result-reason"></div>
+      <table class="result-table">
+        <thead>
+          <tr><th>阵营</th><th>存活</th><th>命中敌方</th><th>误伤己方</th><th>积分</th></tr>
+        </thead>
+        <tbody id="result-rows"></tbody>
+      </table>
+      <div class="result-extra" id="result-extra"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" id="btn-result-menu">返回菜单</button>
+      <button class="btn btn-primary" id="btn-result-again">再来一局</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/constants.js"></script>
+<script src="js/expression.js"></script>
+<script src="js/terrain.js"></script>
+<script src="js/trajectory.js"></script>
+<script src="js/game.js"></script>
+<script src="js/ai.js"></script>
+<script src="js/sketch.js"></script>
+<script src="js/render.js"></script>
+<script src="js/tutorial.js"></script>
+<script src="js/net.js"></script>
+<script src="js/p2p.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
