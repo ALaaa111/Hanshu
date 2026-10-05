@@ -350,11 +350,14 @@
 
     if (!g.shot) return;
     var shot = g.shot;
+    var wi = shot.weapon;
+    var w = C.WEAPONS[wi]; if (!w) w = C.WEAPONS[1];
     var steps = Math.min(shot.traj.numSteps, Math.ceil(g.drawProgress(now)));
     var color = C.TEAM_COLOR[g.players[shot.playerIndex].team];
+    var trailW = w.id === 'heavy' ? 3.4 : (w.id === 'scatter' ? 1.9 : 2.4);
     ctx.save();
     ctx.strokeStyle = color;
-    ctx.lineWidth = 2.4;
+    ctx.lineWidth = trailW;
     ctx.lineJoin = 'round';
     ctx.shadowColor = 'rgba(20, 70, 45, 0.35)';
     ctx.shadowBlur = 4;
@@ -362,18 +365,29 @@
     ctx.stroke();
     ctx.restore();
 
-    /* 炮弹头部 */
+    /* 炮弹头部：按武器区分外观（标准弹=队伍色圆点 / 重炮弹=大红弹 / 散弹=橙团+三颗弹丸） */
     var idx = Math.max(0, steps - 1);
     var hx = GW.toPlaneX(shot.traj.xs[idx]);
     if (shot.traj.inverted) hx = C.PLANE_LENGTH - hx;
     var hy = GW.toPlaneY(shot.traj.ys[idx]);
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(hx, hy, 3.6, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
     ctx.lineWidth = 1;
-    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    if (w.id === 'heavy') {
+      ctx.fillStyle = '#c0392b';
+      ctx.beginPath(); ctx.arc(hx, hy, 5.4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    } else if (w.id === 'scatter') {
+      ctx.fillStyle = '#f59e0b';
+      ctx.beginPath(); ctx.arc(hx, hy, 3.2, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      for (var d = 0; d < 3; d++) {
+        var ang = Math.PI * 2 * d / 3 + 0.6;
+        ctx.beginPath();
+        ctx.arc(hx + Math.cos(ang) * 6, hy + Math.sin(ang) * 6, 1.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else {
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(hx, hy, 3.8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    }
   };
 
   /* ---------------- 预瞄准线 ----------------

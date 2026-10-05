@@ -249,6 +249,10 @@
       $('expr-input').placeholder = self.action === 'move'
         ? '位移曲线：函数图像就是移动路径'
         : '例如 ((x-3)^2)/20';
+      var mh = $('move-hint');
+      if (mh) mh.textContent = self.action === 'move'
+        ? '位移模式：本回合改为沿曲线移动（下方设距离），撞山/出界会被拒绝。'
+        : '';
       self.schedulePreview();
     });
     var weapons = document.querySelectorAll('#weapon-row .weapon');
@@ -265,6 +269,8 @@
       $('move-dist-val').textContent = self.moveDist + ' 格';
     });
     $('btn-skill').onclick = function () { self.useSkill(); };
+    var fab0 = $('skill-fab');
+    if (fab0) fab0.onclick = function () { self.useSkill(); };
 
     /* 快捷语（联机互动）：点「快捷语」弹出预设语句，点空白处收起 */
     $('btn-quick').onclick = function (e) { e.stopPropagation(); self.toggleQuick(); };
@@ -725,7 +731,7 @@
     C.SKILLS.forEach(function (sk) {
       var b = document.createElement('button');
       b.className = 'skill-item' + (picks[seats[idx].index] === sk.id ? ' active' : '');
-      b.innerHTML = '<span class="sk-name">' + sk.name + '</span><span class="sk-hint">' + sk.hint + '</span>';
+      b.innerHTML = '<span class="sk-tag">一次性</span><span class="sk-name">' + sk.name + '</span><span class="sk-hint">' + sk.hint + '</span>';
       b.onclick = function () {
         picks[seats[idx].index] = sk.id;
         /* 选完自动轮到下一位，但弹窗留着等人确认（已选结果都记着，可回头改） */
@@ -1212,6 +1218,13 @@
       skillBtn.disabled = disabled || !p.skill || p.skillUsed;
       skillBtn.classList.toggle('ready', !disabled && !!p.skill && !p.skillUsed);
       skillBtn.title = p.skill ? ((GW.skillById(p.skill) || {}).hint || '') + '（每局一次，消耗本回合）' : '本局未选择技能';
+    }
+    var fab = $('skill-fab');
+    if (fab) {
+      var showFab = !disabled && !!p.skill && !p.skillUsed;
+      fab.classList.toggle('show', showFab);
+      fab.disabled = !showFab;
+      fab.title = p.skill ? ((GW.skillById(p.skill) || {}).name || '') + '：一次性技能，点一下发动（消耗本回合）' : '本局未选技能';
     }
     this.updateTurnUI();
     this.refreshTeams();

@@ -347,6 +347,9 @@
       </div>
     </div>
 
+    <!-- 显眼圆形技能按钮（轮到你、且本局技能未用过时出现） -->
+    <button class="skill-fab" id="skill-fab">技能<span class="skill-fab-sub">一次性</span></button>
+
     <!-- 手机 / 小屏：两块面板改为底部标签页切换，一次只占屏幕下方一块，不压战场 -->
     <div class="win-tabs" id="win-tabs">
       <button class="win-tab active" id="win-tab-draw" data-sheet="draw">✎ 画函数</button>
@@ -408,6 +411,7 @@
           <span class="dc-label">距离</span>
           <input type="range" class="dc-range" id="move-dist" min="1" max="5" step="1" value="3">
           <span class="dc-val" id="move-dist-val">3 格</span>
+          <span class="move-hint" id="move-hint"></span>
         </div>
         <div class="weapon-row" id="weapon-row">
           <button class="weapon active" data-w="1" title="均衡：路径命中 40，落点爆炸">标准弹</button>
