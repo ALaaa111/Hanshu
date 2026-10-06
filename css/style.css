@@ -126,6 +126,16 @@ input { font-family: inherit; }
 }
 .logo-rule i { display: block; height: 1px; background: var(--line); width: 74px; }
 .logo-sub { margin: 0 0 26px; color: var(--text-soft); font-size: 14px; letter-spacing: 1px; }
+.menu-tip {
+  display: inline-block;
+  font-size: 13px; line-height: 1.5;
+  color: var(--green);
+  background: rgba(46, 204, 113, 0.10);
+  border: 1px solid rgba(46, 204, 113, 0.35);
+  border-radius: 999px;
+  padding: 7px 14px;
+  margin: 0 0 18px;
+}
 .menu-buttons { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
 .menu-foot { margin: 24px 0 0; color: var(--muted); font-size: 12px; }
 
