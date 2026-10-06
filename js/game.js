@@ -83,6 +83,9 @@
     this.soldiersPerPlayer = Math.max(1, Math.min(C.MAX_SOLDIERS_PER_PLAYER, opts.soldiersPerPlayer || 2));
     this.opponent = opts.opponent || 'human';
     this.aiLevel = opts.aiLevel || 2;
+    /* 每回合思考时限（秒）：0 = 不限时；缺省回退到 C.TURN_TIME(120s) */
+    var tt = opts.turnTimeSec;
+    this.turnTimeMs = (tt === 0) ? 0 : (tt > 0 ? tt * 1000 : C.TURN_TIME);
     /* 多人模式由「队伍总数 × 每队人数」决定，总人数 = 队伍总数 × 每队人数；
      * 只给 playerCount 的历史调用（服务器 / 测试）会自动反推出等价赛制。 */
     var roster = (opts.playerCount != null)
@@ -254,11 +257,12 @@
 
   GW.Game.prototype.remainingTime = function (now) {
     now = now || GW.now();
+    if (this.turnTimeMs <= 0) return -1;   // 不限时
     if (this.state !== 'aim') {
       var frozenAt = this.turnStartTimeFrozen || this.turnStartTime;
-      return Math.max(0, C.TURN_TIME - (frozenAt - this.turnStartTime));
+      return Math.max(0, this.turnTimeMs - (frozenAt - this.turnStartTime));
     }
-    return Math.max(0, C.TURN_TIME - (now - this.turnStartTime));
+    return Math.max(0, this.turnTimeMs - (now - this.turnStartTime));
   };
 
   /** 试算：不改变任何游戏状态，用于输入预览与 AI 搜索 */
@@ -542,7 +546,7 @@
         this._tickAI(now);
         return;
       }
-      if (C.TURN_TIME - (now - this.turnStartTime) <= 0) {
+      if (this.turnTimeMs > 0 && (now - this.turnStartTime) >= this.turnTimeMs) {
         var name = C.TEAM_NAME[this.players[this.currentTurn].team];
         this.log(name + ' 思考超时，本回合作废。', 'sys');
         this.emit('timeout', { playerIndex: this.currentTurn });

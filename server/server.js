@@ -169,6 +169,7 @@ function startMatch(room) {
   var nSeats = roster.count;
   /* 多人模式（2v2 / 3v3 / 4v4 / 多队混战）：每人 1 名士兵，同阵营玩家共用落座位 */
   var soldiers = nSeats > 2 ? 1 : Math.max(1, Math.min(C.MAX_SOLDIERS_PER_PLAYER, room.config.soldiers || 2));
+  var turnTime = (room.config.turnTime == null) ? 120 : room.config.turnTime;   // 每秒；0 = 不限时
   var battle = nSeats > 2
     ? GW.generateBattle(soldiers, nSeats, roster.teams, roster.perTeam)   // 与浏览器端（点对点房主）共用同一份实现
     : GW.generateBattle(soldiers);
@@ -177,7 +178,7 @@ function startMatch(room) {
   var g = new GW.Game({
     mode: mode, soldiersPerPlayer: soldiers,
     teams: roster.teams, perTeam: roster.perTeam, playerCount: nSeats,
-    opponent: 'human', aiLevel: 2
+    opponent: 'human', aiLevel: 2, turnTimeSec: turnTime
   });
   room.game = g;                  // 必须在 loadBattle 之前赋值，否则初始 'turn' 广播时 snapshotPlayers 会取空
   g.on(broadcastFactory(room));   // 也须在 loadBattle 之前：后者会 emit 初始 'turn'，须被广播
@@ -203,7 +204,7 @@ function startMatch(room) {
     type: 'start',
     config: {
       mode: mode, soldiers: soldiers, playerCount: nSeats,
-      teams: roster.teams, perTeam: roster.perTeam
+      teams: roster.teams, perTeam: roster.perTeam, turnTime: turnTime
     },
     terrain: { circles: battle.circles, positions: battle.positions },
     currentTurn: currentTurn,

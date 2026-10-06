@@ -87,6 +87,19 @@
         </div>
       </div>
 
+      <!-- 每回合思考时间（自定义） -->
+      <div class="field-group">
+        <label class="field-label">每回合时间</label>
+        <div class="seg" id="seg-turntime">
+          <button class="seg-item" data-value="30">30 秒</button>
+          <button class="seg-item" data-value="60">60 秒</button>
+          <button class="seg-item active" data-value="120">120 秒</button>
+          <button class="seg-item" data-value="180">180 秒</button>
+          <button class="seg-item" data-value="0">不限</button>
+        </div>
+        <p class="field-hint">轮到某方行动后的思考时限；超时本回合作废。设为「不限」则无时间限制。</p>
+      </div>
+
       <!-- 多人模式专用赛制：先选队伍总数，再选每队人数，总人数自动算出 -->
       <div class="field-group hidden" id="group-roster">
         <label class="field-label">多人赛制</label>
@@ -202,6 +215,16 @@
               </div>
             </div>
             <div class="field-note" id="mp-roster-note"></div>
+          </div>
+          <div class="field-group">
+            <label class="field-label">每回合时间</label>
+            <div class="seg" id="seg-mp-turntime">
+              <button class="seg-item" data-value="30">30 秒</button>
+              <button class="seg-item" data-value="60">60 秒</button>
+              <button class="seg-item active" data-value="120">120 秒</button>
+              <button class="seg-item" data-value="180">180 秒</button>
+              <button class="seg-item" data-value="0">不限</button>
+            </div>
           </div>
           <button class="btn btn-primary btn-lg" id="btn-mp-create">创建并等待对手</button>
           <label class="check-inline lobby-fillai">

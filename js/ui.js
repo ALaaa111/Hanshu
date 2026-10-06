@@ -53,7 +53,8 @@
     this.settings = {
       opponent: 'human', mode: C.NORMAL_FUNC,
       soldiers: 2, difficulty: 2, players: 2,
-      teams: 2, perTeam: 1
+      teams: 2, perTeam: 1,
+      turnTime: 120          // 每回合思考时间（秒），0 = 不限时
     };
     this.game = null;
     this.renderer = null;
@@ -75,6 +76,7 @@
     this._mpLink = 'server';    // 大厅选择的连接方式：server = 服务器联机，p2p = 点对点联机
     /* 战场缩放（手机端看全边框 / 桌面端看细节） */
     this.zoom = 1; this.panX = 0; this.panY = 0; this._zoomBound = false;
+    this.mpTurnTime = 120;      // 联机创建房间时的每回合时间（秒），0 = 不限
     this._bindStaticUI();
     this._bindSketch();
     this._bindWindows();
@@ -280,6 +282,8 @@
     this._bindSeg('seg-soldiers', function (v) { self.settings.soldiers = parseInt(v, 10); });
     this._bindSeg('seg-players', function (v) { self.settings.players = parseInt(v, 10); });
     this._bindSeg('seg-difficulty', function (v) { self.settings.difficulty = parseInt(v, 10); });
+    /* 每回合时间（秒） */
+    this._bindSeg('seg-turntime', function (v) { self.settings.turnTime = parseInt(v, 10); });
     /* 多人模式：队伍总数 / 每队人数 */
     this._bindSeg('seg-teams', function (v) {
       self.settings.teams = parseInt(v, 10);
@@ -727,7 +731,8 @@
       mode: this.settings.mode,
       soldiersPerPlayer: seats.n > 2 ? 1 : this.settings.soldiers,
       opponent: isTutorial ? 'human' : this.settings.opponent,
-      aiLevel: this.settings.difficulty
+      aiLevel: this.settings.difficulty,
+      turnTimeSec: this.settings.turnTime
     };
     if (multi) { opts.teams = seats.teams; opts.perTeam = seats.perTeam; }
     else { opts.playerCount = seats.n; }
@@ -1399,11 +1404,17 @@
       if (g.state === 'drawing' || g.state === 'exploding') self.updateTurnUI();
       /* 计时 */
       var remain = g.remainingTime(now);
-      var ratio = remain / C.TURN_TIME;
       var fill = $('timer-fill');
-      fill.style.width = (ratio * 100) + '%';
-      fill.className = 'timer-fill' + (ratio < 0.15 ? ' danger' : (ratio < 0.35 ? ' low' : ''));
-      $('timer-text').textContent = (remain / 1000).toFixed(1);
+      if (remain < 0) {                       // 不限时
+        fill.style.width = '100%';
+        fill.className = 'timer-fill';
+        $('timer-text').textContent = '∞';
+      } else {
+        var ratio = remain / (g.turnTimeMs || C.TURN_TIME);
+        fill.style.width = (ratio * 100) + '%';
+        fill.className = 'timer-fill' + (ratio < 0.15 ? ' danger' : (ratio < 0.35 ? ' low' : ''));
+        $('timer-text').textContent = (remain / 1000).toFixed(1);
+      }
       self.refreshTeams();
       self.renderer.draw(now);
       requestAnimationFrame(frame);
@@ -1480,6 +1491,7 @@
     var self = this;
     this._bindSeg('seg-mp-mode', function () {});
     this._bindSeg('seg-mp-soldiers', function () {});
+    this._bindSeg('seg-mp-turntime', function (v) { self.mpTurnTime = parseInt(v, 10); });
     this._bindSeg('seg-mp-teams', function (v) {
       if (GW.clampTeamCount(v) * self._mpPerTeam() > C.MAX_PLAYERS) {
         self._switchSegValue('seg-mp-perteam', String(GW.clampPerTeam(self._mpPerTeam(), v)));
@@ -1502,6 +1514,7 @@
         teams: r.teams,
         perTeam: r.perTeam,
         playerCount: r.count,
+        turnTime: self.mpTurnTime,
         fillAI: !!fillAI
       });
       });
@@ -1673,7 +1686,7 @@
     var currentTurn = GW.randInt(n);
     var base = {
       type: 'start',
-      config: { mode: mode, soldiers: soldiers, playerCount: n, teams: roster.teams, perTeam: roster.perTeam },
+      config: { mode: mode, soldiers: soldiers, playerCount: n, teams: roster.teams, perTeam: roster.perTeam, turnTime: self.mpTurnTime },
       terrain: { circles: battle.circles, positions: battle.positions },
       currentTurn: currentTurn,
       botTeam: -1
@@ -1873,7 +1886,8 @@
       soldiersPerPlayer: msg.config.soldiers,
       playerCount: msg.config.playerCount || 2,
       opponent: 'human',
-      aiLevel: 2
+      aiLevel: 2,
+      turnTimeSec: (msg.config.turnTime == null) ? 120 : msg.config.turnTime
     };
     /* 回合快照会带上赛制（队伍总数 / 每队人数），带上它才能开出同一份队伍构成 */
     if (msg.config && msg.config.teams) { gopts.teams = msg.config.teams; gopts.perTeam = msg.config.perTeam; }

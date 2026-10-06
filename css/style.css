@@ -89,7 +89,12 @@ input { font-family: inherit; }
 /* ---------------- 屏幕切换 ---------------- */
 .screen { display: none; height: 100%; }
 .screen.active { display: flex; }
-.screen-center { align-items: center; justify-content: center; padding: 20px; overflow: auto; }
+/* 安全居中：内容超出一屏时从顶部开始、整页可滚动，不再出现顶部/底部被裁掉（手机端大厅/设置页） */
+.screen-center { align-items: center; justify-content: center; padding: 20px; overflow: auto; -webkit-overflow-scrolling: touch; }
+.screen-center > * { margin: auto; }
+@media (max-width: 760px) {
+  .screen-center { padding: 14px 12px; }
+}
 
 /* ---------------- 主菜单（艺术字） ---------------- */
 .menu-card {
