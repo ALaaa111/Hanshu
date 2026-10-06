@@ -153,24 +153,45 @@
       </div>
 
       <div class="p2p-box hidden" id="p2p-box">
-        <p class="field-hint">房主的浏览器就是服务器，两台设备直连，对局数据不经过任何第三方。
-          只需来回复制<b>一次</b>连接码：房主生成「邀请码」→ 客人粘贴后生成「回执码」→ 房主粘贴回执码即可开打。</p>
-        <div class="p2p-row">
-          <button class="btn btn-primary btn-sm" id="btn-p2p-host">① 我是房主：生成邀请码</button>
-          <button class="btn btn-ghost btn-sm" id="btn-p2p-guest">① 我加入：贴邀请码生成回执码</button>
+        <p class="field-hint">房主的设备就是服务器，对局数据两台设备<b>直连</b>。房主生成一个<b>房间号</b>发给朋友，朋友输入房间号即可加入，自动开局。</p>
+        <div class="p2p-room">
+          <div class="p2p-host-col">
+            <button class="btn btn-primary btn-sm" id="btn-room-create">🏠 我是房主：创建房间（生成房间号）</button>
+            <div class="p2p-room-no hidden" id="p2p-room-no">
+              <span class="p2p-room-label">房间号</span>
+              <b class="p2p-room-num" id="p2p-room-num">······</b>
+              <button class="btn btn-mini" id="btn-room-copy">复制房间号</button>
+            </div>
+            <div class="p2p-note">把房间号发给朋友，他加入后<b>自动开局</b>，不用再复制任何长码。</div>
+          </div>
+          <div class="p2p-guest-col">
+            <label class="field-label">我加入：输入房主的房间号</label>
+            <div class="p2p-join-row">
+              <input type="text" id="p2p-room-input" class="expr-input" maxlength="6" inputmode="numeric"
+                     placeholder="6 位数字" autocomplete="off">
+              <button class="btn btn-primary btn-sm" id="btn-room-join">加入房间</button>
+            </div>
+          </div>
         </div>
-        <label class="field-label">我的连接码（复制发给对方）</label>
-        <textarea id="p2p-out" class="p2p-code" rows="3" readonly
-                  placeholder="点上面任意一个按钮后，这里会出现一串连接码"></textarea>
-        <div class="p2p-row">
-          <button class="btn btn-mini" id="btn-p2p-copy">复制我的连接码</button>
-        </div>
-        <label class="field-label">对方的连接码（粘贴到这里）</label>
-        <textarea id="p2p-in" class="p2p-code" rows="3"
-                  placeholder="把对方发来的那一整串码粘贴到这里（首尾不要漏）"></textarea>
-        <div class="p2p-row">
-          <button class="btn btn-ghost btn-sm" id="btn-p2p-connect">② 房主：贴回执码 → 开始对战</button>
-        </div>
+        <details class="p2p-manual">
+          <summary>连不上？备用方式：手动来回复制连接码</summary>
+          <div class="p2p-row">
+            <button class="btn btn-ghost btn-sm" id="btn-p2p-host">① 我是房主：生成邀请码</button>
+            <button class="btn btn-ghost btn-sm" id="btn-p2p-guest">① 我加入：贴邀请码生成回执码</button>
+          </div>
+          <label class="field-label">我的连接码（复制发给对方）</label>
+          <textarea id="p2p-out" class="p2p-code" rows="3" readonly
+                    placeholder="点上面任意一个按钮后，这里会出现一串连接码"></textarea>
+          <div class="p2p-row">
+            <button class="btn btn-mini" id="btn-p2p-copy">复制我的连接码</button>
+          </div>
+          <label class="field-label">对方的连接码（粘贴到这里）</label>
+          <textarea id="p2p-in" class="p2p-code" rows="3"
+                    placeholder="把对方发来的那一整串码粘贴到这里（首尾不要漏）"></textarea>
+          <div class="p2p-row">
+            <button class="btn btn-ghost btn-sm" id="btn-p2p-connect">② 房主：贴回执码 → 开始对战</button>
+          </div>
+        </details>
       </div>
 
       <div class="lobby-cols" id="lobby-cols">
@@ -635,6 +656,8 @@
 <script src="js/render.js"></script>
 <script src="js/tutorial.js"></script>
 <script src="js/net.js"></script>
+<!-- PeerJS：只用于交换握手信息（牵线），对局数据仍是两台设备点对点直连 -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.5/peerjs.min.js"></script>
 <script src="js/p2p.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/main.js"></script>

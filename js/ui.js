@@ -1537,6 +1537,30 @@
     $('btn-mp-back').onclick = function () { self._leaveLobby(); };
 
     /* ---------------- 点对点联机（房主即服务器） ---------------- */
+
+    /* 房间号模式：房主创建房间 → 朋友输 6 位房间号加入 */
+    $('btn-room-create').onclick = function () {
+      var p = self._mkRoomP2P('host');
+      if (!p) return;
+      self.net = p;
+      p.hostRoom();
+    };
+    $('btn-room-join').onclick = function () {
+      var num = $('p2p-room-input').value.trim();
+      var p = self._mkRoomP2P('guest');
+      if (!p) return;
+      self.net = p;
+      p.joinRoom(num);
+    };
+    $('btn-room-copy').onclick = function () {
+      var num = self.net && self.net._roomNum;
+      if (!num) { self._lobbyStatus('还没有创建房间。', 'error'); return; }
+      if (navigator.clipboard) {
+        try { navigator.clipboard.writeText(num); self._lobbyStatus('房间号 <b>' + num + '</b> 已复制，发给朋友即可。', 'ok'); return; } catch (e) { /* 忽略 */ }
+      }
+      self._lobbyStatus('请手动记下房间号：' + num, 'info');
+    };
+
     $('btn-p2p-host').onclick = function () {
       var p = self._mkP2P('host');
       if (!p) return;
@@ -1628,13 +1652,13 @@
     var hint = $('mp-link-hint');
     if (hint) {
       hint.innerHTML = p2p
-        ? '不需要任何服务器：房主的浏览器就是服务器，两台设备直连，只需来回复制<b>一次</b>连接码。'
+        ? '不需要任何服务器：房主的设备就是服务器。房主点「创建房间」拿到 <b>6 位房间号</b>，朋友输入房间号即可加入。'
         : '需要一台常开的服务器（<code>node server/server.js</code>）；双方都能连上它即可对战。';
     }
     if (p2p) {
       var warn = (GW.p2pSupported && !GW.p2pSupported())
         ? ' ⚠ 当前浏览器不支持 WebRTC，请改用「服务器联机」。' : '';
-      this._lobbyStatus('点对点联机：房主点「① 我是房主：生成邀请码」，朋友点「① 我加入」并粘贴邀请码。' + warn, 'info');
+      this._lobbyStatus('点对点联机：房主点「🏠 创建房间」拿到房间号，朋友在右侧输入房间号点「加入房间」。' + warn, 'info');
     } else {
       this._lobbyStatus('请先运行服务器：<code>node server/server.js</code>，再用浏览器打开同一地址。' +
         '创建房间后会自动生成可直接分享的加入链接。', 'info');
@@ -1653,6 +1677,29 @@
       role: role,
       onCode: function (code) { $('p2p-out').value = code; },
       onStatus: function (text, kind) { self._lobbyStatus(text, kind); },
+      onOpen: function () { self._onP2POpen(role); }
+    });
+    this._setupNet(p2p);
+    return p2p;
+  };
+
+  /** 房间号模式的点对点：房主 host / 客人 guest，加入成功后走同一条开局链路 */
+  GW.UI.prototype._mkRoomP2P = function (role) {
+    var self = this;
+    this._p2pRole = role;
+    if (GW.p2pSupported && !GW.p2pSupported()) {
+      this._lobbyStatus('当前页面无法使用点对点联机：浏览器要求页面是 <b>https://</b> 或 <b>localhost</b>' +
+        '（用局域网 IP 打开的 http:// 页面会被禁用 WebRTC）。请改用「服务器联机」。', 'error');
+      return null;
+    }
+    var p2p = new GW.P2P({
+      role: role,
+      onStatus: function (text, kind) { self._lobbyStatus(text, kind); },
+      onRoom: function (num) {
+        $('p2p-room-no').classList.remove('hidden');
+        $('p2p-room-num').textContent = num;
+        self._lobbyStatus('房间已创建！把房间号 <b>' + num + '</b> 发给朋友，他加入后自动开局。', 'ok');
+      },
       onOpen: function () { self._onP2POpen(role); }
     });
     this._setupNet(p2p);
@@ -1811,6 +1858,8 @@
     $('mp-share').classList.add('hidden');
     $('p2p-out').value = '';
     $('p2p-in').value = '';
+    $('p2p-room-no').classList.add('hidden');
+    $('p2p-room-input').value = '';
     this._setLinkMode(this._mpLink);   // 恢复上次选择的连接方式（服务器 / 点对点）
   };
 

@@ -650,6 +650,34 @@ input { font-family: inherit; }
 }
 .p2p-code[readonly] { background: #f2f7f4; }
 
+/* 房间号模式（点对点联机主入口） */
+.p2p-room { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 4px 0 10px; }
+.p2p-host-col, .p2p-guest-col { min-width: 0; }
+.p2p-room-no {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 10px 0 6px; padding: 8px 12px;
+  background: #fff; border: 1.5px solid var(--green); border-radius: 8px;
+}
+.p2p-room-label { font-size: 13px; color: var(--text-soft); }
+.p2p-room-num {
+  font-size: 22px; letter-spacing: 3px; color: var(--green-dark);
+  font-family: Consolas, "Courier New", ui-monospace, monospace;
+}
+.p2p-note { font-size: 12px; color: var(--text-soft); line-height: 1.5; }
+.p2p-join-row { display: flex; gap: 8px; margin-top: 6px; }
+.p2p-join-row .expr-input {
+  width: 130px; flex: 0 0 auto; text-align: center;
+  font-size: 18px; letter-spacing: 3px;
+  font-family: Consolas, "Courier New", ui-monospace, monospace;
+}
+.p2p-join-row .btn { flex: 1 1 auto; }
+.p2p-manual { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 8px; }
+.p2p-manual summary { font-size: 12.5px; color: var(--text-soft); cursor: pointer; padding: 2px 0; }
+.p2p-manual[open] summary { margin-bottom: 4px; color: var(--green-dark); }
+@media (max-width: 560px) {
+  .p2p-room { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 560px) {
   .lobby-cols { grid-template-columns: 1fr; }
   .p2p-row .btn { flex: 1 1 100%; }

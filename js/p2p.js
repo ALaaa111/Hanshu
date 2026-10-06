@@ -6,15 +6,16 @@
  *   · 点对点联机 —— 两台设备用 WebRTC 数据通道直连，房主的浏览器就是权威端，
  *     对局数据不经过任何第三方，也不需要任何服务器。
  *
- * 为什么还需要「复制连接码」：
+ * 为什么还需要「牵线」：
  *   两台设备要直连，得先互相告知「我在哪、怎么连我」（SDP / ICE 候选地址）。
- *   这个「握手信息」必须经一条双方都能到达的通道交换——本实现采用**手动复制**：
- *   房主生成邀请码 → 客人粘贴后生成回执码 → 房主粘贴回执码 → 直连建立。
- *   只复制这一次，之后所有对局数据都走点对点通道。
+ *   这个握手信息必须经一条双方都能到达的通道交换。本实现提供两种：
+ *   ① 房间号模式（默认）：借助 PeerJS 公共信令服务牵线——房主创建房间得到
+ *      6 位房间号，朋友输号即可，握手自动完成；
+ *   ② 备用手动模式：房主生成邀请码 → 客人粘贴后生成回执码 → 房主粘贴回执码。
+ *   两种方式握手之后，所有对局数据都走两台设备的点对点通道。
  *
- * 穿透能力：借助公共 STUN 服务器穿透家用路由器。少数网络（对称 NAT、
- * 部分校园网 / 企业网）必须靠 TURN 中转才能连通，本实现不含 TURN，
- * 连不上时会明确提示改用「服务器联机」。
+ * 穿透能力：公共 STUN 穿透家用路由器；另附免费公共 TURN（Open Relay）中转，
+ * 对称 NAT / 部分校园网·企业网下 STUN 失败时也能连上（速度略慢）。
  *
  * 对外接口与 GW.Net 保持一致（on / fire / sketch / chat / rematch / quit），
  * 因此 UI 层可以把两种联机方式当成同一个对象来用。
@@ -23,7 +24,9 @@
   'use strict';
   var GW = root.GW || (root.GW = {});
 
-  /* 公共 STUN：只用于穿透 NAT、获取自己的公网候选地址，不中转任何对局数据 */
+  /* 公共 STUN：只用于穿透 NAT、获取自己的公网候选地址，不中转任何对局数据。
+   * 另附公共 TURN 中转（Open Relay 社区免费服务）：对称 NAT / 严格的校园网·企业网下
+   * STUN 直连失败时，退而经 TURN 中转——速度略慢但能连上。 */
   var ICE_SERVERS = [
     {
       urls: [
@@ -32,8 +35,19 @@
         'stun:stun.cloudflare.com:3478',
         'stun:global.stun.twilio.com:3478'
       ]
+    },
+    {
+      urls: [
+        'turn:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:443',
+        'turn:openrelay.metered.ca:443?transport=tcp'
+      ],
+      username: 'openrelayproject',
+      credential: 'openrelayproject'
     }
   ];
+  /* PeerJS 房间号模式：公共信令只负责"牵线"（交换握手信息），对局数据仍点对点直连 */
+  var PEER_PREFIX = 'hs-funcwar-';
   /* 数据通道单条消息上限（各家浏览器约 256KB，留足余量） */
   var CHUNK = 60 * 1024;
 
@@ -73,6 +87,9 @@
     this.handlers = {};
     this.pc = null;
     this.dc = null;
+    this._peer = null;    // PeerJS 实例（房间号模式）
+    this._conn = null;    // PeerJS DataConnection（房间号模式）
+    this._roomNum = null;
     this.connected = false;
     this.closed = false;
     this.opts = opts;
@@ -287,18 +304,165 @@
     });
   };
 
+  /* ---------------- 房间号模式（PeerJS 牵线，数据仍直连） ---------------- */
+
+  /** 把 PeerJS DataConnection 适配成与原生 DataChannel 相同的事件 */
+  P2P.prototype._bindConn = function (conn) {
+    var self = this;
+    this._conn = conn;
+    conn.on('open', function () {
+      self.connected = true;
+      if (self._acceptTimer) { clearTimeout(self._acceptTimer); self._acceptTimer = null; }
+      if (self._joinTimer) { clearTimeout(self._joinTimer); self._joinTimer = null; }
+      self._status('直连已建立。', 'ok');
+      self._emit('open');
+      if (self.opts.onOpen) self.opts.onOpen();
+    });
+    conn.on('data', function (d) {
+      var text = (typeof d === 'string') ? d : JSON.stringify(d);
+      self._onRaw(text);
+    });
+    conn.on('close', function () {
+      self.connected = false;
+      self._emit('close');
+      if (self.opts.onClose) self.opts.onClose();
+    });
+    conn.on('error', function (e) {
+      var m = (e && e.message) ? e.message : '未知错误';
+      self._emit('error', { msg: '数据通道出错：' + m });
+    });
+  };
+
+  /** PeerJS 错误翻译成玩家能看懂的中文 */
+  P2P.prototype._peerError = function (e) {
+    var t = e && e.type;
+    var msg;
+    if (t === 'peer-unavailable') {
+      msg = '找不到这个房间号：可能房主已退出房间，或号码输错了。\n请和房主核对 6 位房间号再试一次。';
+    } else if (t === 'unavailable-id') {
+      msg = '房间号撞号（极小概率），请再点一次「创建房间」。';
+    } else if (t === 'network' || t === 'socket-error' || t === 'socket-closed' || t === 'server-error') {
+      msg = '牵线服务器连不上（当前网络受限）。\n请展开下方「备用方式：手动复制连接码」，照样能玩。';
+    } else if (t === 'browser-incompatible') {
+      msg = '当前浏览器不支持点对点联机，请换 Chrome / Edge 等现代浏览器。';
+    } else {
+      msg = '点对点联机出错：' + ((e && e.message) ? e.message : t || '未知');
+    }
+    alert(msg);
+    this._emit('error', { msg: msg });
+  };
+
+  /** 房主：创建房间 → 随机 6 位房间号；朋友输号即可加入 */
+  P2P.prototype.hostRoom = function () {
+    var self = this;
+    if (typeof root.Peer === 'undefined') {
+      this._emit('error', { msg: '房间号组件没加载出来（可能被网络拦截），请刷新页面重试，或展开「备用方式」手动换码。' });
+      return;
+    }
+    if (GW.p2pSupported && !GW.p2pSupported()) {
+      this._emit('error', { msg: '当前页面不支持点对点连接（需 https:// 或 localhost），请改用「服务器联机」' });
+      return;
+    }
+    this._freePeer();
+    this._status('正在创建房间…', 'info');
+    var tried = 0;
+    var self2 = this;
+    function create() {
+      tried++;
+      var num = String(100000 + Math.floor(Math.random() * 900000));
+      var peer;
+      try { peer = new root.Peer(PEER_PREFIX + num, { debug: 0 }); }
+      catch (e) { self2._peerError(e); return; }
+      self2._peer = peer;
+      self2._roomNum = num;
+      peer.on('open', function () {
+        self2._status('房间已创建！房间号 <b>' + num + '</b>：发给朋友，他输号即可加入，加入后自动开局。', 'ok');
+        self2._emit('room', num);
+      });
+      peer.on('connection', function (conn) {
+        /* 点对点只容 1 位客人：后来的直接婉拒 */
+        if (self2._conn) { try { conn.close(); } catch (e2) { /* 忽略 */ } return; }
+        self2._status('有玩家正在加入…', 'info');
+        self2._bindConn(conn);
+      });
+      peer.on('disconnected', function () {
+        if (!self2.connected) self2._status('与牵线服务器断开（已创建的房间不受影响），等待玩家加入中…', 'info');
+      });
+      peer.on('error', function (e) {
+        if (e && e.type === 'unavailable-id' && tried < 3) { try { peer.destroy(); } catch (e2) {} create(); return; }
+        self2._peerError(e);
+      });
+    }
+    create();
+  };
+
+  /** 客人：输入 6 位房间号加入 */
+  P2P.prototype.joinRoom = function (num) {
+    var self = this;
+    num = String(num || '').trim();
+    if (!/^\d{6}$/.test(num)) {
+      alert('房间号是 6 位数字，请检查后重新输入。');
+      return;
+    }
+    if (typeof root.Peer === 'undefined') {
+      this._emit('error', { msg: '房间号组件没加载出来（可能被网络拦截），请刷新页面重试，或展开「备用方式」手动换码。' });
+      return;
+    }
+    if (GW.p2pSupported && !GW.p2pSupported()) {
+      this._emit('error', { msg: '当前页面不支持点对点连接（需 https:// 或 localhost），请改用「服务器联机」' });
+      return;
+    }
+    this._freePeer();
+    this._status('正在加入房间 ' + num + ' …', 'info');
+    var peer;
+    try { peer = new root.Peer({ debug: 0 }); }
+    catch (e) { this._peerError(e); return; }
+    this._peer = peer;
+    this._roomNum = num;
+    this._joinTimer = setTimeout(function () {
+      if (self.connected) return;
+      alert('加入超时：房间 ' + num + ' 没有响应。\n常见原因：房间号输错、房主已退出、或当前网络连不上牵线服务器。\n可展开「备用方式：手动复制连接码」再试。');
+    }, 15000);
+    peer.on('open', function () {
+      var conn = peer.connect(PEER_PREFIX + num, { reliable: true });
+      self._bindConn(conn);
+    });
+    peer.on('error', function (e) {
+      if (self._joinTimer) { clearTimeout(self._joinTimer); self._joinTimer = null; }
+      self._peerError(e);
+    });
+  };
+
+  /** 释放 PeerJS 牵线资源（不影响已建立的直连） */
+  P2P.prototype._freePeer = function () {
+    if (this._joinTimer) { clearTimeout(this._joinTimer); this._joinTimer = null; }
+    if (this._peer) {
+      try { this._peer.destroy(); } catch (e) { /* 忽略 */ }
+      this._peer = null;
+    }
+    this._conn = null;
+  };
+
   /* ---------------- 收发 ---------------- */
+  /** 当前可用的发送通道：手动模式用 dc，房间号模式用 PeerJS conn */
+  P2P.prototype._chan = function () {
+    if (this.dc && this.dc.readyState === 'open') return this.dc;
+    if (this._conn && this._conn.open) return this._conn;
+    return null;
+  };
+
   P2P.prototype.send = function (obj) {
-    if (!this.dc || this.dc.readyState !== 'open') return;
+    var chan = this._chan();
+    if (!chan) return;
     var text;
     try { text = JSON.stringify(obj); } catch (e) { return; }
     try {
-      if (text.length <= CHUNK) { this.dc.send(text); return; }
+      if (text.length <= CHUNK) { chan.send(text); return; }
       /* 超长消息（长弹道）分片发送，避免超出数据通道单条上限 */
       var id = 'c' + Date.now() + Math.floor(Math.random() * 1000);
       var n = Math.ceil(text.length / CHUNK);
       for (var i = 0; i < n; i++) {
-        this.dc.send(JSON.stringify({
+        chan.send(JSON.stringify({
           __chunk: { id: id, i: i, n: n, data: text.substr(i * CHUNK, CHUNK) }
         }));
       }
@@ -366,10 +530,12 @@
   P2P.prototype.quit = function () {
     this.closed = true;
     try { this.send({ type: 'opponent_left' }); } catch (e) { /* 忽略 */ }
-    var dc = this.dc, pc = this.pc;
+    var dc = this.dc, pc = this.pc, conn = this._conn, peer = this._peer;
     setTimeout(function () {
       try { if (dc) dc.close(); } catch (e) { /* 忽略 */ }
       try { if (pc) pc.close(); } catch (e) { /* 忽略 */ }
+      try { if (conn) conn.close(); } catch (e) { /* 忽略 */ }
+      try { if (peer) peer.destroy(); } catch (e) { /* 忽略 */ }
     }, 150);
     this.connected = false;
   };
