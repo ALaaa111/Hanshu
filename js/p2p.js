@@ -248,6 +248,21 @@
       alert('请先点「① 我是房主：生成邀请码」生成邀请码，再来贴回执码。');
       return;
     }
+    /* 已经连上：无需再贴 */
+    if (this.connected) {
+      alert('直连已经建立、对战已在进行，不需要再贴回执码。');
+      return;
+    }
+    /* 回执码只能应用一次：重复粘贴会报 "Called in wrong state" */
+    var state = this.pc.signalingState;
+    if (state === 'stable') {
+      alert('这份回执码刚才已经贴过了，不能重复贴。\n现在正等待直连建立（最多 12 秒）：\n· 若随后自动进入对战，就是成功了；\n· 若一直没反应，请点「① 我是房主：重新生成邀请码」，双方从头再来一次。');
+      return;
+    }
+    if (state !== 'have-local-offer') {
+      alert('当前连接状态不对（' + state + '），无法贴回执码。\n请点「① 我是房主：重新生成邀请码」，把新的邀请码发给朋友重新走一遍。');
+      return;
+    }
     var answer;
     try {
       answer = decode((codeText || '').trim());
