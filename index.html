@@ -559,31 +559,38 @@
   </div>
 </div>
 
-<!-- ======================= 手机竖屏提示层：请横过来 ======================= -->
-<div class="rotate-overlay" id="rotate-overlay">
-  <div class="rotate-inner">
-    <div class="rotate-phone" aria-hidden="true"></div>
-    <div class="rotate-text">请把手机横过来再玩</div>
-    <div class="rotate-sub">函数战争需要横向屏幕，才能看清整个战场与函数弹道。</div>
-  </div>
-</div>
-
+<!-- ======================= 手机端：进入即尝试锁横屏（不弹遮罩，不挡界面） ======================= -->
 <script>
-/* 首次在页面上点击/触摸时，尽量把屏幕锁成横屏（仅安卓全屏下生效，失败无妨；iOS 用上方盖屏提示兜底） */
+/* 手机端首次触摸/点击时，直接请求全屏并锁定横屏。
+   安卓 Chrome 在全屏下可真正锁横屏；iOS 不支持则静默失败，游戏照常可玩。
+   不再弹"请横过来"遮罩，避免出现卡死、无法退出的问题。 */
 (function () {
-  var tried = false;
-  function tryLockLandscape() {
-    if (tried) return;
-    tried = true;
-    try {
-      if (screen.orientation && typeof screen.orientation.lock === 'function') {
-        var p = screen.orientation.lock('landscape');
-        if (p && p.catch) p.catch(function () {});
-      }
-    } catch (e) {}
+  if (!window.matchMedia || !window.matchMedia('(max-width: 900px)').matches) return;
+  var done = false;
+  function enterLandscape() {
+    if (done) return;
+    done = true;
+    var el = document.documentElement;
+    function lock() {
+      try {
+        if (screen.orientation && typeof screen.orientation.lock === 'function') {
+          var p = screen.orientation.lock('landscape');
+          if (p && p.catch) p.catch(function () {});
+        }
+      } catch (e) {}
+    }
+    var reqFs = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (reqFs) {
+      try {
+        var pr = reqFs.call(el);
+        if (pr && pr.then) pr.then(lock).catch(lock); else lock();
+      } catch (e) { lock(); }
+    } else {
+      lock();
+    }
   }
-  ['click', 'touchstart'].forEach(function (ev) {
-    document.addEventListener(ev, tryLockLandscape, { passive: true });
+  ['touchstart', 'click'].forEach(function (ev) {
+    document.addEventListener(ev, enterLandscape, { once: true, passive: true });
   });
 })();
 </script>
