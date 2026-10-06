@@ -144,6 +144,7 @@
     this.dc = dc;
     dc.onopen = function () {
       self.connected = true;
+      if (self._acceptTimer) { clearTimeout(self._acceptTimer); self._acceptTimer = null; }
       self._status('直连已建立。', 'ok');
       self._emit('open');
       if (self.opts.onOpen) self.opts.onOpen();
@@ -208,10 +209,12 @@
     try {
       offer = decode((codeText || '').trim());
     } catch (e) {
+      alert('这串邀请码读不出来：请让房主把「邀请码」整段复制给你（首尾不要漏、别带多余空格或换行）。');
       this._emit('error', { msg: '这串邀请码读不出来，请让房主把码完整复制给你（首尾不要漏）。' });
       return;
     }
     if (!offer || (offer.type !== 'offer' || !offer.sdp)) {
+      alert('这串不是有效的邀请码。应当贴的是房主点「① 我是房主：生成邀请码」后发来的那一串；不是「回执码」，也不是你自己生成的码。');
       this._emit('error', { msg: '这串不是有效的邀请码（应当贴的是房主生成的那一串）。' });
       return;
     }
@@ -242,22 +245,29 @@
   P2P.prototype.hostAccept = function (codeText) {
     var self = this;
     if (!this.pc) {
-      this._emit('error', { msg: '请先点「① 我是房主：生成邀请码」。' });
+      alert('请先点「① 我是房主：生成邀请码」生成邀请码，再来贴回执码。');
       return;
     }
     var answer;
     try {
       answer = decode((codeText || '').trim());
     } catch (e) {
-      this._emit('error', { msg: '这串回执码读不出来，请让朋友把码完整复制给你。' });
+      alert('这串回执码读不出来：请让朋友把「回执码」整段复制给你（首尾不要漏、别带多余空格或换行）。');
       return;
     }
     if (!answer || answer.type !== 'answer' || !answer.sdp) {
-      this._emit('error', { msg: '这里要贴的是朋友生成的「回执码」，不是你自己那串邀请码。' });
+      alert('这里要贴的是朋友点「① 我加入」后生成的「回执码」，不是你或对方点「我是房主」生成的「邀请码」。\n请确认：对方点的是「我加入」按钮，不是「我是房主」。');
       return;
     }
     this._status('已收到回执码，正在建立直连…', 'info');
+    this._acceptTimer = setTimeout(function () {
+      if (self.connected) return;
+      alert('连接超时：12 秒内未建立直连。常见原因：\n① 对方发来的不是「回执码」（而是邀请码）；\n② 回执码复制不完整；\n③ 双方都在校园网 / 企业网（对称 NAT），WebRTC 直连被挡。\n建议改用「服务器联机」。');
+      self._emit('error', { msg: '连接超时：12 秒内未建立直连。常见原因：\n① 对方发来的不是「回执码」（而是邀请码）；\n② 回执码复制不完整；\n③ 双方都在校园网/企业网（对称 NAT），WebRTC 直连被挡。\n建议改用「服务器联机」。' });
+    }, 12000);
     this.pc.setRemoteDescription(answer)['catch'](function (e) {
+      if (self._acceptTimer) clearTimeout(self._acceptTimer);
+      alert('建立连接失败：' + (e && e.message ? e.message : e));
       self._emit('error', { msg: '建立连接失败：' + (e && e.message ? e.message : e) });
     });
   };
