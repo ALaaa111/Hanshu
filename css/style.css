@@ -534,6 +534,42 @@ input { font-family: inherit; }
   font-weight: 700; box-shadow: inset 0 0 0 1px var(--green);
 }
 
+/* 本回合指令摘要：正式对局的「行动 / 炮弹 / 技能」在「回合准备」弹窗里选，这里只做只读展示 + 重选入口 */
+.order-strip { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.order-chip {
+  font-size: 12px; padding: 3px 8px; border: 1px solid var(--line);
+  background: var(--panel-soft); color: var(--green-deep); white-space: nowrap;
+}
+.order-chip.off { color: var(--muted); }
+#btn-order-change { margin-left: auto; }
+
+/* 回合准备弹窗（回合开始前选：行动 / 炮弹 / 技能） */
+.turn-card { width: min(560px, 100%); }
+.turn-modal-owner { font-size: 12.5px; color: var(--green-dark); font-weight: 600; }
+.order-block { margin-bottom: 12px; }
+.order-block-title { font-size: 13px; color: var(--green-deep); font-weight: 700; margin-bottom: 6px; }
+.order-block.dim { opacity: .4; pointer-events: none; }
+.order-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.order-opts-3 { grid-template-columns: repeat(3, 1fr); }
+.order-opt {
+  text-align: left; font-family: inherit; cursor: pointer;
+  border: 1px solid var(--line); background: var(--panel-soft);
+  padding: 9px 11px; display: flex; flex-direction: column; gap: 3px;
+  transition: all .14s ease;
+}
+.order-opt b { font-size: 14px; color: var(--green-deep); }
+.order-opt span { font-size: 12px; color: var(--text-soft); line-height: 1.45; }
+.order-opt:hover { border-color: var(--green); background: var(--green-light); }
+.order-opt.active {
+  border-color: var(--green); background: var(--green-light);
+  box-shadow: inset 0 0 0 1px var(--green);
+}
+.order-opt.active b { color: var(--green-dark); }
+.legacy-order { display: block; }
+@media (max-width: 560px) {
+  .order-opts-3 { grid-template-columns: 1fr; }
+}
+
 .angle-row { display: flex; align-items: center; gap: 7px; }
 .angle-label { font-size: 12px; color: var(--text-soft); }
 .angle-bar { flex: 1 1 auto; max-width: 320px; height: 5px; background: var(--line-soft); overflow: hidden; }
@@ -654,15 +690,20 @@ input { font-family: inherit; }
 .p2p-room { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 4px 0 10px; }
 .p2p-host-col, .p2p-guest-col { min-width: 0; }
 .p2p-room-no {
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  margin: 10px 0 6px; padding: 8px 12px;
+  display: flex; flex-direction: column; align-items: stretch; gap: 6px;
+  margin: 10px 0 6px; padding: 10px 12px;
   background: #fff; border: 1.5px solid var(--green); border-radius: 8px;
 }
-.p2p-room-label { font-size: 13px; color: var(--text-soft); }
+.p2p-room-label { font-size: 12.5px; color: var(--text-soft); }
 .p2p-room-num {
-  font-size: 22px; letter-spacing: 3px; color: var(--green-dark);
+  width: 100%; box-sizing: border-box; text-align: center;
+  font-size: 28px; letter-spacing: 6px; font-weight: 700; color: var(--green-dark);
   font-family: Consolas, "Courier New", ui-monospace, monospace;
+  padding: 8px 6px; border: 2px dashed var(--green); background: #f4fbf7;
+  -webkit-user-select: all; user-select: all;
 }
+.p2p-room-btns { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.p2p-room-tip { font-size: 12px; color: var(--text-soft); line-height: 1.45; flex: 1 1 150px; }
 .p2p-note { font-size: 12px; color: var(--text-soft); line-height: 1.5; }
 .p2p-link-row { display: flex; gap: 8px; align-items: center; margin: 8px 0 4px; flex-wrap: wrap; }
 .p2p-link-row .btn { flex: 0 0 auto; }
@@ -880,7 +921,7 @@ input { font-family: inherit; }
   width: 78px; height: 78px; border-radius: 50%;
   border: 3px solid #fff;
   background: radial-gradient(circle at 50% 35%, #f6b352, var(--warn));
-  color: #fff; font-size: 17px; font-weight: 800; line-height: 1.15; letter-spacing: 1px;
+  color: #fff; font-size: 14px; font-weight: 800; line-height: 1.15; letter-spacing: 1px;
   box-shadow: 0 8px 22px rgba(217, 131, 36, 0.5);
   display: none; flex-direction: column; align-items: center; justify-content: center;
   cursor: pointer; -webkit-tap-highlight-color: transparent;

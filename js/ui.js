@@ -315,35 +315,25 @@
     $('btn-restart').onclick = function () { self.restart(); };
     $('btn-quit').onclick = function () { self.quitToMenu(); };
 
-    /* 攻击 / 位移 + 武器三选一 + 位移距离 + 技能 */
-    this._bindSeg('seg-action', function (v) {
-      self.action = (v === 'move') ? 'move' : 'fire';
-      $('move-row').classList.toggle('hidden', self.action !== 'move');
-      $('expr-input').placeholder = self.action === 'move'
-        ? '位移曲线：函数图像就是移动路径'
-        : '例如 ((x-3)^2)/20';
-      var mh = $('move-hint');
-      if (mh) mh.textContent = self.action === 'move'
-        ? '位移模式：本回合改为沿曲线移动（下方设距离），撞山/出界会被拒绝。'
-        : '';
-      self.schedulePreview();
-    });
+    /* 行动 / 炮弹 / 技能：正式对局在「回合准备」弹窗里选（回合开始前），
+     * 教程模式下这三组控件直接显示在指令台里（#legacy-order），用于逐步讲解。 */
+    this._bindSeg('seg-action', function (v) { self._applyAction(v); });
     var weapons = document.querySelectorAll('#weapon-row .weapon');
     Array.prototype.forEach.call(weapons, function (btn) {
-      btn.onclick = function () {
-        Array.prototype.forEach.call(weapons, function (b) { b.classList.remove('active'); });
-        btn.classList.add('active');
-        self.weapon = parseInt(btn.getAttribute('data-w'), 10) || 0;
-      };
+      btn.onclick = function () { self._setWeapon(parseInt(btn.getAttribute('data-w'), 10) || 0); };
     });
     var moveRange = $('move-dist');
-    moveRange.addEventListener('input', function () {
+    if (moveRange) moveRange.addEventListener('input', function () {
       self.moveDist = parseInt(moveRange.value, 10) || 3;
       $('move-dist-val').textContent = self.moveDist + ' 格';
     });
-    $('btn-skill').onclick = function () { self.useSkill(); };
+    var skillBtn = $('btn-skill');
+    if (skillBtn) skillBtn.onclick = function () { self.useSkill(); };
+    var orderChange = $('btn-order-change');
+    if (orderChange) orderChange.onclick = function () { self.openTurnPrep(); };
     var fab0 = $('skill-fab');
-    if (fab0) fab0.onclick = function () { self.useSkill(); };
+    if (fab0) fab0.onclick = function () { self.openTurnPrep(); };
+    this._bindTurnPrep();
 
     /* 快捷语（联机互动）：点「快捷语」弹出预设语句，点空白处收起 */
     $('btn-quick').onclick = function (e) { e.stopPropagation(); self.toggleQuick(); };
@@ -614,6 +604,8 @@
   GW.UI.prototype.fireSketch = function () {
     var g = this.game;
     if (!g || g.state !== 'aim') return;
+    /* 本回合选了「位移」时，手绘窗口的按钮同样走位移（沿手绘路线走一段） */
+    if (this.action === 'move') { this.doMove(); return; }
     var status = $('sketch-status');
     if (this.isRemote && !this.isHost) {
       if (g.currentTurn !== this.myTeam) { this.toast('还没轮到你。', 'sys'); return; }
@@ -721,6 +713,222 @@
     $('help-modal').classList.remove('hidden');
   };
 
+  /* ============================================================
+   * 回合准备：回合开始前先选好「行动 / 炮弹 / 技能」
+   * 正式对局（单机 / 人机 / 联机）每次轮到真人玩家时先弹这个窗，
+   * 选完才进入瞄准——避免打了一半才发现行动或炮弹选错了。
+   * 教程模式下不弹此窗，三组控件直接显示在指令台里逐步讲解。
+   * ============================================================ */
+
+  /** 应用「本回合行动」：攻击 / 位移（同步指令台的只读摘要与距离滑杆） */
+  GW.UI.prototype._applyAction = function (act) {
+    var self = this;
+    this.action = (act === 'move') ? 'move' : 'fire';
+    var isMove = this.action === 'move';
+    var mr = $('move-row'); if (mr) mr.classList.toggle('hidden', !isMove);
+    var seg = document.querySelectorAll('#seg-action .seg-item');
+    Array.prototype.forEach.call(seg, function (b) {
+      b.classList.toggle('active', b.getAttribute('data-value') === self.action);
+    });
+    var input = $('expr-input');
+    if (input) input.placeholder = isMove ? '位移曲线：函数图像就是移动路径' : '例如 ((x-3)^2)/20';
+    var mh = $('move-hint');
+    if (mh) mh.textContent = isMove ? '位移模式：本回合改为沿曲线移动（下方设距离），撞山/出界会被拒绝。' : '';
+    var sf = $('btn-sketch-fire');
+    if (sf) sf.textContent = isMove ? '沿手绘路线位移' : '发射手绘弹道';
+    this._refreshOrderStrip();
+    this.schedulePreview();
+  };
+
+  /** 选择炮弹（0 重炮弹 / 1 标准弹 / 2 散弹） */
+  GW.UI.prototype._setWeapon = function (w) {
+    var self = this;
+    this.weapon = (w === 0 || w === 2) ? w : 1;
+    var weapons = document.querySelectorAll('#weapon-row .weapon');
+    Array.prototype.forEach.call(weapons, function (b) {
+      b.classList.toggle('active', (parseInt(b.getAttribute('data-w'), 10) || 0) === self.weapon);
+    });
+    this._refreshOrderStrip();
+  };
+
+  /** 指令台顶部只读摘要：本回合选了哪些 */
+  GW.UI.prototype._refreshOrderStrip = function () {
+    var g = this.game;
+    if (!g) return;
+    var p = g.players[g.currentTurn];
+    if (!p) return;
+    var isMove = this.action === 'move';
+    var ae = $('order-action-text');
+    if (ae) ae.textContent = '本回合：' + (isMove ? '位移' : '攻击');
+    var we = $('order-weapon-text');
+    if (we) {
+      we.textContent = isMove ? '炮弹：—' : ('炮弹：' + ((GW.weaponById(this.weapon) || {}).name || ''));
+      we.classList.toggle('off', isMove);
+    }
+    var se = $('order-skill-text');
+    if (se) {
+      if (!p.skill) { se.textContent = '技能：无'; se.classList.add('off'); }
+      else if (p.skillUsed) { se.textContent = '技能：已用'; se.classList.add('off'); }
+      else { se.textContent = '技能：' + ((GW.skillById(p.skill) || {}).name || '') + '（可用）'; se.classList.remove('off'); }
+    }
+    var chg = $('btn-order-change');
+    if (chg) chg.disabled = !this._canActNow();
+  };
+
+  /** 现在是否轮到自己行动（「重选本回合」与回合准备弹窗的开关条件） */
+  GW.UI.prototype._canActNow = function () {
+    var g = this.game;
+    if (!g || g.state !== 'aim') return false;
+    var p = g.players[g.currentTurn];
+    if (!p) return false;
+    if (this.isRemote) return g.currentTurn === this.myTeam && !p.isAI;
+    return !p.isAI;
+  };
+
+  GW.UI.prototype._bindTurnPrep = function () {
+    var self = this;
+    function bindOpts(containerId, attr, onPick) {
+      var box = $(containerId);
+      if (!box) return;
+      var opts = box.querySelectorAll('.order-opt');
+      Array.prototype.forEach.call(opts, function (btn) {
+        btn.onclick = function () {
+          var val = btn.getAttribute(attr);
+          onPick(val);
+          Array.prototype.forEach.call(opts, function (b) { b.classList.toggle('active', b === btn); });
+        };
+      });
+    }
+    bindOpts('turn-action-opts', 'data-act', function (v) {
+      self._prepAction = (v === 'move') ? 'move' : 'fire';
+      self._syncTurnPrepBlocks();
+    });
+    bindOpts('turn-skill-opts', 'data-skill', function (v) {
+      self._prepSkill = (v === '1');
+      self._syncTurnPrepBlocks();
+    });
+    var ok = $('turn-ok');
+    if (ok) ok.onclick = function () { self._confirmTurnPrep(); };
+  };
+
+  /** 炮弹选项按 C.WEAPONS 动态生成（展示顺序：标准弹 / 重炮弹 / 散弹） */
+  GW.UI.prototype._renderTurnWeaponOpts = function () {
+    var box = $('turn-weapon-opts');
+    if (!box) return;
+    var self = this;
+    var order = [1, 0, 2], html = '', i;
+    for (i = 0; i < order.length; i++) {
+      var w = C.WEAPONS[order[i]];
+      if (!w) continue;
+      html += '<button class="order-opt" data-w="' + order[i] + '">' +
+        '<b>' + escapeHtml(w.name) + '</b><span>' + escapeHtml(w.hint) + '</span></button>';
+    }
+    box.innerHTML = html;
+    var opts = box.querySelectorAll('.order-opt');
+    Array.prototype.forEach.call(opts, function (btn) {
+      btn.onclick = function () {
+        var w = parseInt(btn.getAttribute('data-w'), 10);
+        self._prepWeapon = (w === 0 || w === 2) ? w : 1;
+        Array.prototype.forEach.call(opts, function (b) { b.classList.toggle('active', b === btn); });
+        self._syncTurnPrepBlocks();
+      };
+    });
+  };
+
+  /** 选了「使用技能」→ 行动 / 炮弹失去意义；选了「位移」→ 炮弹失去意义 */
+  GW.UI.prototype._syncTurnPrepBlocks = function () {
+    var using = !!this._prepSkill;
+    var ab = $('turn-action-block'); if (ab) ab.classList.toggle('dim', using);
+    var wb = $('turn-weapon-block'); if (wb) wb.classList.toggle('dim', using || this._prepAction === 'move');
+    var ok = $('turn-ok');
+    if (ok) {
+      ok.textContent = using ? '使用技能（消耗本回合）'
+        : (this._prepAction === 'move' ? '开始位移' : '开始攻击');
+    }
+  };
+
+  /** 打开「回合准备」：只在轮到你、且处于瞄准阶段时有效 */
+  GW.UI.prototype.openTurnPrep = function () {
+    var g = this.game;
+    if (this.isTutorial) return;
+    if (!this._canActNow()) return;
+    var modal = $('turn-modal');
+    if (!modal) return;
+    var p = g.players[g.currentTurn];
+    this._prepAction = (this.action === 'move') ? 'move' : 'fire';
+    this._prepWeapon = (typeof this.weapon === 'number') ? this.weapon : 1;
+    this._prepSkill = false;
+    this._prepOpenedAt = GW.now();
+
+    var title = $('turn-modal-title');
+    if (title) title.textContent = '第 ' + (g.round + 1) + ' 回合 · 回合准备';
+    var owner = $('turn-modal-owner');
+    if (owner) owner.textContent = this._seatName(g.currentTurn);
+    var sk = p.skill ? (GW.skillById(p.skill) || null) : null;
+    var hint = $('turn-modal-hint');
+    if (hint) {
+      hint.innerHTML = '轮到你了：先定好这一回合做什么，再进入瞄准。' +
+        (sk ? '你的技能是「<b>' + escapeHtml(sk.name) + '</b>」（' + escapeHtml(sk.hint || '') +
+              '），每局只能发动一次。' : '');
+    }
+    /* ① 行动 */
+    var aBox = $('turn-action-opts');
+    if (aBox) {
+      var aOpts = aBox.querySelectorAll('.order-opt');
+      Array.prototype.forEach.call(aOpts, function (b) {
+        b.classList.toggle('active', b.getAttribute('data-act') === this);
+      }, this._prepAction);
+    }
+    /* ② 炮弹 */
+    this._renderTurnWeaponOpts();
+    var wBox = $('turn-weapon-opts');
+    if (wBox) {
+      var wOpts = wBox.querySelectorAll('.order-opt');
+      var curW = (this._prepWeapon === 0 || this._prepWeapon === 2) ? this._prepWeapon : 1;
+      Array.prototype.forEach.call(wOpts, function (b) {
+        var w = parseInt(b.getAttribute('data-w'), 10);
+        w = (w === 0 || w === 2) ? w : 1;
+        b.classList.toggle('active', w === curW);
+      });
+    }
+    /* ③ 技能（只在本局还没用过时出现） */
+    var skillOk = !!p.skill && !p.skillUsed;
+    var skBlock = $('turn-skill-block');
+    if (skBlock) skBlock.classList.toggle('hidden', !skillOk);
+    if (skillOk) {
+      var sh = $('turn-skill-hint');
+      if (sh) sh.textContent = '立刻发动「' + sk.name + '」：' + (sk.hint || '') + '（本回合不再开炮）';
+    }
+    var sBox = $('turn-skill-opts');
+    if (sBox) {
+      var sOpts = sBox.querySelectorAll('.order-opt');
+      Array.prototype.forEach.call(sOpts, function (b) {
+        b.classList.toggle('active', b.getAttribute('data-skill') === '0');
+      });
+    }
+    this._syncTurnPrepBlocks();
+    modal.classList.remove('hidden');
+  };
+
+  GW.UI.prototype._confirmTurnPrep = function () {
+    var g = this.game;
+    var modal = $('turn-modal');
+    if (modal) modal.classList.add('hidden');
+    if (!g || g.state !== 'aim') { this._prepOpenedAt = 0; return; }
+    /* 回合准备期间不计入思考时间：把回合起点往后推相同的毫秒数 */
+    if (this._prepOpenedAt) {
+      var used = GW.now() - this._prepOpenedAt;
+      if (used > 0 && used < 10 * 60 * 1000) g.turnStartTime += used;
+    }
+    this._prepOpenedAt = 0;
+    if (this._prepSkill) { this.useSkill(); return; }   // 用技能 = 消耗本回合
+    this._setWeapon(this._prepWeapon);
+    this._applyAction(this._prepAction);
+    if (typeof this.updateTurnUI === 'function') this.updateTurnUI();
+    var input = $('expr-input');
+    if (input && !input.disabled) { try { input.focus(); } catch (e) { /* 忽略 */ } }
+  };
+
   /* ---------------- 进入战斗 ---------------- */
   GW.UI.prototype.enterGame = function (isTutorial) {
     this.isTutorial = !!isTutorial;
@@ -765,13 +973,18 @@
     this.setSketchRot(0);
     this.setSketchScale(1);
     this.setQuickVisible(false);   // 单机 / 人机无需快捷语
-    $('btn-skill').classList.remove('hidden');
+    /* 新对局默认从「攻击」开始；教程：三组控件直接摆在指令台，正式对局收进「回合准备」弹窗 */
+    this.action = 'fire';
+    this._setupOrderUI(!!isTutorial);
     this.syncModeUI();
+    this._applyAction(this.action);
     this.renderer.resize();
     this.sketch.resize();
     this.refreshTeams();
     this.updateTurnUI();
     this.startLoop();
+    /* 构造 Game 时事件监听还没挂上，第一回合的 UI 状态要在这里补一次（顺带弹出回合准备） */
+    this.onTurn();
     return this.game;
   };
 
@@ -1225,11 +1438,18 @@
   /** 联机开局：给自己（自己的席位）选一次技能 */
   GW.UI.prototype._askRemoteSkill = function () {
     var self = this;
-    if (this._skillPicked) return;
+    if (this._skillPicked) { this._afterRemoteSkillPick(); return; }
     this.openSkillPick([{ label: this._seatName(this.myTeam) || '你', index: this.myTeam }], function (picks) {
       self._skillPicked = true;
       if (picks && picks.length) self._pickSkillOnline(picks[0]);
+      self._afterRemoteSkillPick();
     });
+  };
+
+  /** 联机开局技能选完后：若正好轮到自己，才开始「回合准备」（避免两个弹窗叠在一起） */
+  GW.UI.prototype._afterRemoteSkillPick = function () {
+    this._suppressPrep = false;
+    this.openTurnPrep();
   };
 
   /** 使用开局技能（每局一次，消耗本回合） */
@@ -1286,6 +1506,9 @@
     /* 联机：是否轮到我由 currentTurn === myTeam 决定；单机：是否电脑回合 */
     var myTurn = this.isRemote ? (g.currentTurn === this.myTeam) : !isAI;
     var disabled = !myTurn;
+    /* 新回合开始：先收掉上一个「回合准备」弹窗 */
+    var tm = $('turn-modal'); if (tm) tm.classList.add('hidden');
+    this._prepOpenedAt = 0;
     $('expr-input').disabled = disabled;
     $('btn-fire').disabled = disabled;
     $('btn-sketch-fire').disabled = disabled;
@@ -1297,22 +1520,31 @@
       skillBtn.classList.toggle('ready', !disabled && !!p.skill && !p.skillUsed);
       skillBtn.title = p.skill ? ((GW.skillById(p.skill) || {}).hint || '') + '（每局一次，消耗本回合）' : '本局未选择技能';
     }
+    /* 圆形按钮：正式对局里改成「回合准备」的重选入口 */
     var fab = $('skill-fab');
     if (fab) {
-      var showFab = !disabled && !!p.skill && !p.skillUsed;
+      var showFab = !disabled && !this.isTutorial;
       fab.classList.toggle('show', showFab);
       fab.disabled = !showFab;
-      fab.title = p.skill ? ((GW.skillById(p.skill) || {}).name || '') + '：一次性技能，点一下发动（消耗本回合）' : '本局未选技能';
+      fab.title = '打开「回合准备」：重选本回合的行动 / 炮弹 / 技能';
     }
     this.updateTurnUI();
     this.refreshTeams();
+    this._refreshOrderStrip();
     if (disabled) {
       if (this.isRemote) this.toast('等待 ' + this._seatName(g.currentTurn) + ' 行动…', 'sys');
       else this.toast('电脑正在计算射击诸元…', 'ai');
       if (this.renderer) this.renderer.setPreview(null);
     } else {
       this.updateAngleUI();
-      $('expr-input').focus();
+      /* 轮到你 → 先弹「回合准备」（回合开始前选好 行动 / 炮弹 / 技能），选完才进入瞄准 */
+      var prepping = !this.isTutorial && !this._suppressPrep && g.state === 'aim';
+      if (prepping) {
+        var tip = $('turn-tip'); if (tip) tip.textContent = '请先完成「回合准备」…';
+        this.openTurnPrep();
+      } else {
+        try { $('expr-input').focus(); } catch (e) { /* 忽略 */ }
+      }
       /* 轮到自己时，把手绘笔迹按新士兵重新解算一次 */
       if (!this.sketch.isEmpty()) this.onSketchChanged();
       else {
@@ -1320,6 +1552,17 @@
         this.setFuncDisplay(this.lastFired || '', { mode: 'idle', team: this.lastFiredTeam });
       }
     }
+  };
+
+  /** 教程模式：把「行动 / 炮弹 / 技能」三组控件显示在指令台里逐步讲解；
+   *  正式对局：隐藏它们，改由「回合准备」弹窗在回合开始前统一选择。 */
+  GW.UI.prototype._setupOrderUI = function (tutorial) {
+    var lo = $('legacy-order'); if (lo) lo.classList.toggle('hidden', !tutorial);
+    var os = $('order-strip'); if (os) os.classList.toggle('hidden', !!tutorial);
+    var bs = $('btn-skill'); if (bs) bs.classList.toggle('hidden', !tutorial);
+    var tm = $('turn-modal'); if (tm) tm.classList.add('hidden');
+    this._prepOpenedAt = 0;
+    this._suppressPrep = false;
   };
 
   /** 席位称呼：多人混战时叫玩家名，1v1 / 分组对战时叫阵营名 */
@@ -1383,6 +1626,50 @@
       }
     }
   };
+
+  /* ---------------- 复制到剪贴板（带兜底） ----------------
+   * Clipboard API 在「非 https / 非用户手势 / 部分手机浏览器」下会直接失败或静默失败，
+   * 所以这里三级兜底：Clipboard API → execCommand('copy') → 选中文本让用户手动复制。 */
+  function copyText(text, selEl, onOk, onFail) {
+    text = String(text == null ? '' : text);
+    if (!text) { if (onFail) onFail(); return; }
+    function selectEl() {
+      try {
+        if (selEl && selEl.select) { selEl.focus(); selEl.select(); }
+        else if (selEl && selEl.setSelectionRange && selEl.value != null) {
+          selEl.focus(); selEl.setSelectionRange(0, selEl.value.length);
+        }
+      } catch (e) { /* 忽略 */ }
+    }
+    function legacy() {
+      var ok = false;
+      try {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.top = '-1000px';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        ta.setSelectionRange(0, text.length);
+        ok = !!(document.execCommand && document.execCommand('copy'));
+        document.body.removeChild(ta);
+      } catch (e) { ok = false; }
+      if (ok) { if (onOk) onOk(); return; }
+      selectEl();
+      if (onFail) onFail();
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        var pr = navigator.clipboard.writeText(text);
+        if (pr && pr.then) { pr.then(function () { if (onOk) onOk(); })['catch'](legacy); return; }
+        if (onOk) onOk();
+        return;
+      } catch (e) { /* 落到兜底 */ }
+    }
+    legacy();
+  }
 
   function escapeHtml(s) {
     return String(s).replace(/[&<>"]/g, function (c) {
@@ -1560,20 +1847,22 @@
     $('btn-room-copy').onclick = function () {
       var num = self.net && self.net.room;
       if (!num) { self._lobbyStatus('还没有创建房间。', 'error'); return; }
-      if (navigator.clipboard) {
-        try { navigator.clipboard.writeText(num); self._lobbyStatus('房间号 <b>' + num + '</b> 已复制，发给朋友即可。', 'ok'); return; } catch (e) { /* 忽略 */ }
-      }
-      self._lobbyStatus('请手动记下房间号：' + num, 'info');
+      copyText(num, $('p2p-room-num'), function () {
+        self._lobbyStatus('房间号 <b>' + escapeHtml(num) + '</b> 已复制，发给朋友即可。', 'ok');
+      }, function () {
+        self._lobbyStatus('复制没成功：房间号框已选中（<b>' + escapeHtml(num) + '</b>）——' +
+          '长按选择「复制」，或者直接念给朋友。', 'info');
+      });
     };
-    /* 复制「邀请链接」：朋友点开链接直接进房间（链接自带房间号，信令走后端公共云，零配置） */
+    /* 复制「邀请链接」：朋友点开链接直接进房间（链接自带房间号，信令走公共云，零配置） */
     $('btn-room-link').onclick = function () {
       var link = $('p2p-room-link').value;
       if (!link) { self._lobbyStatus('还没有创建房间。', 'error'); return; }
-      if (navigator.clipboard) {
-        try { navigator.clipboard.writeText(link); self._lobbyStatus('邀请链接已复制，发给朋友即可（他点开直接进房间）。', 'ok'); return; } catch (e) { /* 忽略 */ }
-      }
-      $('p2p-room-link').select();
-      self._lobbyStatus('请长按上面的链接手动复制，发给朋友。', 'info');
+      copyText(link, $('p2p-room-link'), function () {
+        self._lobbyStatus('邀请链接已复制，发给朋友即可（他点开直接进房间）。', 'ok');
+      }, function () {
+        self._lobbyStatus('复制没成功：链接框已选中——长按选择「复制」，发给朋友即可。', 'info');
+      });
     };
     /* 手动复制连接码（旧方案）已移除：联机房间自动生成邀请链接，房主只需发链接 */
 
@@ -1653,15 +1942,22 @@
     return this._mkTunnel(role, {
       onRoom: function (num) {
         $('p2p-room-no').classList.remove('hidden');
-        $('p2p-room-num').textContent = num;
+        var numEl = $('p2p-room-num');
+        if (numEl && numEl.value != null) numEl.value = num;
+        else if (numEl) numEl.textContent = num;
         var link = self._buildInviteLink(num);
         $('p2p-link-row').classList.remove('hidden');
         $('p2p-room-link').value = link;
-        /* 尽量自动把邀请链接复制到剪贴板，玩家直接去粘贴发给朋友即可 */
-        if (navigator.clipboard) {
-          try { navigator.clipboard.writeText(link); self._lobbyStatus('房间已创建！邀请链接已自动复制，直接发给朋友，他点开就进房间。', 'ok'); return; } catch (e) { /* 退化到手动 */ }
-        }
-        self._lobbyStatus('房间已创建！点「复制邀请链接」把网址发给朋友，他点开就直接进房间。', 'ok');
+        /* 房间号先大大地显示出来（不依赖复制）；然后再尽量自动把邀请链接复制进剪贴板 */
+        self._lobbyStatus('房间已创建！房间号 <b>' + escapeHtml(num) + '</b> 已显示在左侧——' +
+          '把「邀请链接」发给朋友（他点开直接进房间），或者把「房间号」发给朋友、让他自己输。', 'ok');
+        copyText(link, $('p2p-room-link'), function () {
+          self._lobbyStatus('房间已创建！邀请链接已自动复制，直接粘贴发给朋友即可；' +
+            '房间号 <b>' + escapeHtml(num) + '</b> 也已显示在左侧备用。', 'ok');
+        }, function () {
+          self._lobbyStatus('房间已创建！房间号 <b>' + escapeHtml(num) + '</b>，' +
+            '点「复制邀请链接」或「复制房间号」发给朋友（若复制没反应，长按号码框手动复制）。', 'ok');
+        });
       }
     });
   };
@@ -1816,6 +2112,9 @@
     $('btn-mp-copy').style.display = 'none';
     $('mp-share').classList.add('hidden');
     $('p2p-room-no').classList.add('hidden');
+    if ($('p2p-link-row')) $('p2p-link-row').classList.add('hidden');
+    var roomNumEl = $('p2p-room-num');
+    if (roomNumEl && roomNumEl.value != null) roomNumEl.value = '······';
     $('p2p-room-input').value = '';
     this._setLinkMode();   // 联机房间模式（房主即权威端，零服务器）
     /* 若带邀请链接进来（?room=），自动进房，玩家零操作 */
@@ -1917,13 +2216,16 @@
     this._assignDefaultSkills();   // 先兜底配技（权威端的技能随后由 turn / skills 覆盖）
     if (authoritative) this._attachHostBroadcast();   // 房主：把本地对局事件广播给客人
     this._skillPicked = false;
+    this.action = 'fire';
+    this._setupOrderUI(false);
+    /* 开局先弹「选择开局技能」，这时不弹回合准备；选完技能再弹（见 _afterRemoteSkillPick） */
+    this._suppressPrep = true;
     /* 必须在 _attachGameEvents 之后调用：loadBattle 会 emit 'turn'，
      * 由 onTurn 据此启用 / 禁用输入并聚焦到当前行动方。 */
     this.game.loadBattle(msg.terrain.circles, msg.terrain.positions, msg.currentTurn, !authoritative);
     $('badge-mode').textContent = C.MODE_NAME[this.game.mode] +
       (this.game.playerCount > 2 ? ' · ' + GW.teamLabel(this.game.teams, this.game.perTeam) : '') +
       (authoritative ? ' · 联机（房主）' : ' · 联机');
-    $('btn-skill').classList.remove('hidden');
     this.lastFired = '';
     this.lastFiredTeam = 0;
     this.setFuncDisplay('');
@@ -1942,6 +2244,7 @@
     this.setSketchScale(1);
     this.setQuickVisible(true);    // 联机对局显示「快捷语」互动入口
     this.syncModeUI();
+    this._applyAction(this.action);
     this.renderer.resize();
     this.sketch.resize();
     this.refreshTeams();
