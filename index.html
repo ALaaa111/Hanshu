@@ -141,7 +141,7 @@
         <label class="field-label">连接方式</label>
         <div class="seg" id="seg-mp-link">
           <button class="seg-item active" data-value="server">服务器联机</button>
-          <button class="seg-item" data-value="p2p">点对点联机（不用服务器）</button>
+          <button class="seg-item" data-value="tunnel">内网穿透联机（推荐）</button>
         </div>
         <p class="field-hint" id="mp-link-hint">需要一台常开的服务器（<code>node server/server.js</code>）；双方都能连上它即可对战。</p>
       </div>
@@ -152,8 +152,14 @@
         <p class="field-hint">默认指向当前打开本游戏的服务器。跨设备时改成房主的公网 IP，例如 ws://203.0.113.5:8080。</p>
       </div>
 
+      <div class="field-group hidden" id="relay-url-row">
+        <label class="field-label">中继服务器地址</label>
+        <input type="text" id="relay-url" class="expr-input" placeholder="ws://localhost:8081" autocomplete="off">
+        <p class="field-hint">默认指向当前打开本游戏的服务器（即运行 <code>node server/relay.js</code> 那台）。异地联机请改成部署好的中继地址，例如 <code>wss://你的中继.平台域名</code>。</p>
+      </div>
+
       <div class="p2p-box hidden" id="p2p-box">
-        <p class="field-hint">房主的设备就是服务器，对局数据两台设备<b>直连</b>。房主生成一个<b>房间号</b>发给朋友，朋友输入房间号即可加入，自动开局。</p>
+        <p class="field-hint">房主的设备就是服务器（权威端），通过<b>中继服务器</b>帮你和朋友打通网络：能直连就直连（低延迟），直连不成（校园网 / 企业网 / 异地）自动走中继服务器中转，<b>一定能连上</b>。房主生成<b>房间号</b>发给朋友，朋友输入房间号即可加入，自动开局。</p>
         <div class="p2p-room">
           <div class="p2p-host-col">
             <button class="btn btn-primary btn-sm" id="btn-room-create">🏠 我是房主：创建房间（生成房间号）</button>
@@ -173,25 +179,6 @@
             </div>
           </div>
         </div>
-        <details class="p2p-manual">
-          <summary>连不上？备用方式：手动来回复制连接码</summary>
-          <div class="p2p-row">
-            <button class="btn btn-ghost btn-sm" id="btn-p2p-host">① 我是房主：生成邀请码</button>
-            <button class="btn btn-ghost btn-sm" id="btn-p2p-guest">① 我加入：贴邀请码生成回执码</button>
-          </div>
-          <label class="field-label">我的连接码（复制发给对方）</label>
-          <textarea id="p2p-out" class="p2p-code" rows="3" readonly
-                    placeholder="点上面任意一个按钮后，这里会出现一串连接码"></textarea>
-          <div class="p2p-row">
-            <button class="btn btn-mini" id="btn-p2p-copy">复制我的连接码</button>
-          </div>
-          <label class="field-label">对方的连接码（粘贴到这里）</label>
-          <textarea id="p2p-in" class="p2p-code" rows="3"
-                    placeholder="把对方发来的那一整串码粘贴到这里（首尾不要漏）"></textarea>
-          <div class="p2p-row">
-            <button class="btn btn-ghost btn-sm" id="btn-p2p-connect">② 房主：贴回执码 → 开始对战</button>
-          </div>
-        </details>
       </div>
 
       <div class="lobby-cols" id="lobby-cols">
@@ -656,9 +643,8 @@
 <script src="js/render.js"></script>
 <script src="js/tutorial.js"></script>
 <script src="js/net.js"></script>
-<!-- PeerJS：只用于交换握手信息（牵线），对局数据仍是两台设备点对点直连 -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.5/peerjs.min.js"></script>
-<script src="js/p2p.js"></script>
+<!-- 内网穿透联机：连中继服务器做「打洞 + 兜底中转」（server/relay.js） -->
+<script src="js/tunnel.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/main.js"></script>
 </body>

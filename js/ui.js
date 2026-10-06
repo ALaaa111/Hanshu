@@ -1479,6 +1479,14 @@
     return v;
   };
 
+  /** 内网穿透联机用的中继服务器地址：默认指向当前打开本游戏的服务器（relay.js 同端口托管页面） */
+  GW.UI.prototype._relayUrl = function () {
+    var v = $('relay-url') ? $('relay-url').value.trim() : '';
+    if (!v) v = (loc().protocol === 'https:' ? 'wss://' : 'ws://') + (loc().host || 'localhost:8081');
+    if (v.indexOf('://') < 0) v = 'ws://' + v;
+    return v;
+  };
+
   GW.UI.prototype._lobbyStatus = function (html, kind) {
     var el = $('lobby-status');
     if (!el) return;
@@ -1538,16 +1546,16 @@
 
     /* ---------------- 点对点联机（房主即服务器） ---------------- */
 
-    /* 房间号模式：房主创建房间 → 朋友输 6 位房间号加入 */
+    /* 房间号模式：房主创建房间 → 朋友输 6 位房间号加入（经中继服务器穿透） */
     $('btn-room-create').onclick = function () {
-      var p = self._mkRoomP2P('host');
+      var p = self._mkRoomTunnel('host');
       if (!p) return;
       self.net = p;
       p.hostRoom();
     };
     $('btn-room-join').onclick = function () {
       var num = $('p2p-room-input').value.trim();
-      var p = self._mkRoomP2P('guest');
+      var p = self._mkRoomTunnel('guest');
       if (!p) return;
       self.net = p;
       p.joinRoom(num);
@@ -1561,41 +1569,7 @@
       self._lobbyStatus('请手动记下房间号：' + num, 'info');
     };
 
-    $('btn-p2p-host').onclick = function () {
-      var p = self._mkP2P('host');
-      if (!p) return;
-      self.net = p;
-      p.hostStart();
-    };
-    $('btn-p2p-guest').onclick = function () {
-      var code = $('p2p-in').value.trim();
-      if (!code) { self._lobbyStatus('请先把房主发来的「邀请码」粘贴到下面的输入框。', 'error'); return; }
-      var p = self._mkP2P('guest');
-      if (!p) return;
-      self.net = p;
-      p.guestAnswer(code);
-    };
-    $('btn-p2p-connect').onclick = function () {
-      var code = $('p2p-in').value.trim();
-      if (!self.net || self._p2pRole !== 'host') {
-        self._lobbyStatus('请先点「① 我是房主：生成邀请码」。', 'error');
-        return;
-      }
-      if (!code) { self._lobbyStatus('请把朋友发回的「回执码」粘贴到下面的输入框。', 'error'); return; }
-      self.net.hostAccept(code);
-    };
-    $('btn-p2p-copy').onclick = function () {
-      var text = $('p2p-out').value;
-      if (!text) { self._lobbyStatus('还没有生成连接码。', 'error'); return; }
-      if (navigator.clipboard) {
-        try {
-          navigator.clipboard.writeText(text);
-          self._lobbyStatus('连接码已复制，发给对方即可。', 'ok');
-          return;
-        } catch (e) { /* 退化为提示 */ }
-      }
-      self._lobbyStatus('请手动全选上面的连接码复制。', 'info');
-    };
+    /* 手动复制连接码（旧方案）已移除：内网穿透联机通过中继服务器自动打通，房主只需发房间号 */
 
 
     $('btn-mp-copy').onclick = function () {
@@ -1615,116 +1589,106 @@
   };
 
   /** 赛制说明：队伍总数 × 每队人数 = 总人数；
-   *  点对点直连一次只连一条通道，暂时只开放 2 人（2 队 × 1 人）。 */
+   *  内网穿透联机一次只连一条通道，暂时只开放 2 人（2 队 × 1 人）。 */
   GW.UI.prototype._syncMpRoster = function () {
-    var p2p = this._mpLink === 'p2p';
+    var tunnel = this._mpLink === 'tunnel';
     var note = $('mp-roster-note');
     if (!note) return;
     var r = this._mpRoster();
-    if (p2p && r.count > 2) {
+    if (tunnel && r.count > 2) {
       this._switchSegValue('seg-mp-teams', '2');
       this._switchSegValue('seg-mp-perteam', '1');
       r = this._mpRoster();
-      note.innerHTML = '<b>点对点直连暂时只支持 2 人</b>（2 队 × 1 人 = 1v1）；想玩多人组队请切回「服务器联机」。';
+      note.innerHTML = '<b>内网穿透联机暂时只支持 2 人</b>（2 队 × 1 人 = 1v1）；想玩多人组队请切回「服务器联机」。';
       return;
     }
     document.querySelectorAll('#seg-mp-teams .seg-item').forEach(function (b) {
-      b.classList.toggle('disabled', p2p && parseInt(b.getAttribute('data-value'), 10) > 2);
+      b.classList.toggle('disabled', tunnel && parseInt(b.getAttribute('data-value'), 10) > 2);
     });
     document.querySelectorAll('#seg-mp-perteam .seg-item').forEach(function (b) {
-      b.classList.toggle('disabled', p2p && parseInt(b.getAttribute('data-value'), 10) > 1);
+      b.classList.toggle('disabled', tunnel && parseInt(b.getAttribute('data-value'), 10) > 1);
     });
-    note.innerHTML = p2p ? '（点对点仅 1v1）' :
+    note.innerHTML = tunnel ? '（内网穿透仅 1v1）' :
       ('当前：<b>' + r.teams + ' 队 × ' + r.perTeam + ' 人 = 共 ' + r.count + ' 人</b>（' +
         GW.teamLabel(r.teams, r.perTeam) + '），' +
         (r.count > 2 ? '每人只指挥 1 名士兵，打光某一整队即该队判负。' : '每人可带 ' + this._mpSoldiers() + ' 名士兵。'));
   };
 
-  /* ---------------- 点对点联机（房主即服务器） ---------------- */
+  /* ---------------- 内网穿透联机（房主即权威端，中继服务器做打洞 + 兜底中转） ---------------- */
   GW.UI.prototype._setLinkMode = function (mode) {
-    this._mpLink = (mode === 'p2p') ? 'p2p' : 'server';
+    this._mpLink = (mode === 'tunnel') ? 'tunnel' : 'server';
     this._syncMpRoster();
-    var p2p = (this._mpLink === 'p2p');
-    $('p2p-box').classList.toggle('hidden', !p2p);
-    $('mp-url-row').classList.toggle('hidden', p2p);
-    $('lobby-cols').classList.toggle('hidden', p2p);
+    var tunnel = (this._mpLink === 'tunnel');
+    $('p2p-box').classList.toggle('hidden', !tunnel);
+    $('relay-url-row').classList.toggle('hidden', !tunnel);
+    $('mp-url-row').classList.toggle('hidden', tunnel);
+    $('lobby-cols').classList.toggle('hidden', tunnel);
     $('mp-share').classList.add('hidden');
     var hint = $('mp-link-hint');
     if (hint) {
-      hint.innerHTML = p2p
-        ? '不需要任何服务器：房主的设备就是服务器。房主点「创建房间」拿到 <b>6 位房间号</b>，朋友输入房间号即可加入。'
+      hint.innerHTML = tunnel
+        ? '通过<b>中继服务器</b>（<code>node server/relay.js</code>）穿透：房主设备即权威端。房主点「创建房间」拿到 <b>6 位房间号</b>发给朋友，朋友输入房间号即可加入。能直连就直连，连不上自动走中继中转，<b>一定能连上</b>。'
         : '需要一台常开的服务器（<code>node server/server.js</code>）；双方都能连上它即可对战。';
     }
-    if (p2p) {
-      var warn = (GW.p2pSupported && !GW.p2pSupported())
-        ? ' ⚠ 当前浏览器不支持 WebRTC，请改用「服务器联机」。' : '';
-      this._lobbyStatus('点对点联机：房主点「🏠 创建房间」拿到房间号，朋友在右侧输入房间号点「加入房间」。' + warn, 'info');
+    if (tunnel) {
+      this._lobbyStatus('内网穿透联机：房主点「🏠 创建房间」拿到房间号，朋友在右侧输入房间号点「加入房间」。', 'info');
     } else {
       this._lobbyStatus('请先运行服务器：<code>node server/server.js</code>，再用浏览器打开同一地址。' +
         '创建房间后会自动生成可直接分享的加入链接。', 'info');
     }
   };
 
-  GW.UI.prototype._mkP2P = function (role) {
+  /** 内网穿透联机（房主浏览器权威 + 中继服务器打洞/兜底）：房主 / 客人通用工厂 */
+  GW.UI.prototype._mkTunnel = function (role, extra) {
     var self = this;
     this._p2pRole = role;
-    if (GW.p2pSupported && !GW.p2pSupported()) {
-      this._lobbyStatus('当前页面无法使用点对点联机：浏览器要求页面是 <b>https://</b> 或 <b>localhost</b>' +
-        '（用局域网 IP 打开的 http:// 页面会被禁用 WebRTC）。请改用「服务器联机」。', 'error');
+    if (GW.tunnelSupported && !GW.tunnelSupported()) {
+      this._lobbyStatus('当前浏览器不支持 WebSocket，无法使用内网穿透联机。请换 Chrome / Edge 等现代浏览器。', 'error');
       return null;
     }
-    var p2p = new GW.P2P({
+    var opts = {
       role: role,
-      onCode: function (code) { $('p2p-out').value = code; },
+      relayUrl: self._relayUrl(),
       onStatus: function (text, kind) { self._lobbyStatus(text, kind); },
-      onOpen: function () { self._onP2POpen(role); }
-    });
-    this._setupNet(p2p);
-    return p2p;
+      onOpen: function () { self._onTunnelOpen(role); }
+    };
+    if (extra && extra.onRoom) opts.onRoom = extra.onRoom;
+    var t = new GW.Tunnel(opts);
+    this._setupNet(t);
+    return t;
   };
 
-  /** 房间号模式的点对点：房主 host / 客人 guest，加入成功后走同一条开局链路 */
-  GW.UI.prototype._mkRoomP2P = function (role) {
+  /** 房间号模式：房主创建房间拿到 6 位房间号；客人输号加入 */
+  GW.UI.prototype._mkRoomTunnel = function (role) {
     var self = this;
-    this._p2pRole = role;
-    if (GW.p2pSupported && !GW.p2pSupported()) {
-      this._lobbyStatus('当前页面无法使用点对点联机：浏览器要求页面是 <b>https://</b> 或 <b>localhost</b>' +
-        '（用局域网 IP 打开的 http:// 页面会被禁用 WebRTC）。请改用「服务器联机」。', 'error');
-      return null;
-    }
-    var p2p = new GW.P2P({
-      role: role,
-      onStatus: function (text, kind) { self._lobbyStatus(text, kind); },
+    return this._mkTunnel(role, {
       onRoom: function (num) {
         $('p2p-room-no').classList.remove('hidden');
         $('p2p-room-num').textContent = num;
         self._lobbyStatus('房间已创建！把房间号 <b>' + num + '</b> 发给朋友，他加入后自动开局。', 'ok');
-      },
-      onOpen: function () { self._onP2POpen(role); }
+      }
     });
-    this._setupNet(p2p);
-    return p2p;
   };
 
-  GW.UI.prototype._onP2POpen = function (role) {
+  GW.UI.prototype._onTunnelOpen = function (role) {
     if (role === 'host') {
-      this._lobbyStatus('直连已建立，正在生成战场…', 'ok');
+      this._lobbyStatus('连接已建立，正在生成战场…', 'ok');
       this._p2pHostStart();
     } else {
-      this._lobbyStatus('直连已建立，等待房主开局…', 'ok');
+      this._lobbyStatus('连接已建立，等待房主开局…', 'ok');
     }
   };
 
   /** 房主端开局：本地生成战场 → 把同一份地图发给客人 → 本机作为权威端开打 */
   GW.UI.prototype._p2pHostStart = function () {
     var mode = this._mpMode(), soldiers = this._mpSoldiers();
-    /* 点对点直连最多 2 人（房主 + 1 位客人），多人赛制仅服务器联机支持 */
+    /* 内网穿透联机最多 2 人（房主 + 1 位客人），多人赛制仅服务器联机支持 */
     var roster = this._mpRoster();
     if (roster.count > 2) {
       this._switchSegValue('seg-mp-teams', '2');
       this._switchSegValue('seg-mp-perteam', '1');
       roster = this._mpRoster();
-      this._lobbyStatus('点对点直连只支持 1v1（2 队 × 1 人），已自动改为 2 人开打。', 'info');
+      this._lobbyStatus('内网穿透联机只支持 1v1（2 队 × 1 人），已自动改为 2 人开打。', 'info');
     }
     var n = roster.count;
     var battle = n > 2
@@ -1854,13 +1818,12 @@
     this._p2pRole = null;
     this.showScreen('screen-lobby');
     $('mp-url').value = 'ws://' + (loc().host || 'localhost:8080');
+    $('relay-url').value = (loc().protocol === 'https:' ? 'wss://' : 'ws://') + (loc().host || 'localhost:8081');
     $('btn-mp-copy').style.display = 'none';
     $('mp-share').classList.add('hidden');
-    $('p2p-out').value = '';
-    $('p2p-in').value = '';
     $('p2p-room-no').classList.add('hidden');
     $('p2p-room-input').value = '';
-    this._setLinkMode(this._mpLink);   // 恢复上次选择的连接方式（服务器 / 点对点）
+    this._setLinkMode(this._mpLink);   // 恢复上次选择的连接方式（服务器 / 内网穿透）
   };
 
   GW.UI.prototype._leaveLobby = function () {
@@ -1957,9 +1920,9 @@
     this.lastFiredTeam = 0;
     this.setFuncDisplay('');
     var vsNote = (this.botTeam >= 0 && this.botTeam !== msg.team) ? '（对手为 AI 电脑）' : '';
-    var linkNote = authoritative ? '（点对点直连 · 你是房主）'
+    var linkNote = authoritative ? '（内网穿透 · 你是房主）'
       : ('，房号 ' + (this.net ? this.net.room : ''));
-    this.toast((authoritative ? '点对点对战开始' : '联机对战开始') + '：你是 ' +
+    this.toast((authoritative ? '内网穿透对战开始' : '联机对战开始') + '：你是 ' +
       this._teamName(msg.team) + linkNote + vsNote, 'sys');
     $('expr-input').value = '';
     $('expr-status').textContent = '提示：输入表达式即可预览弹道，回车发射';
