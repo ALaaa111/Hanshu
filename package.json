@@ -1,0 +1,13 @@
+{
+  "name": "funcwar-relay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "函数战争 · 联机中继服务器（零依赖，同时托管游戏页面；部署到任意云平台即得一个公开游戏网址）",
+  "scripts": {
+    "start": "node server/relay.js",
+    "relay": "node server/relay.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

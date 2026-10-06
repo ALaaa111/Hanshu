@@ -1,0 +1,14 @@
+# Render 一键部署配置：把「函数战争联机中继」部署成一个常驻公开网址。
+# 它同时托管游戏页面 + 提供 WebSocket 中继，所以部署后得到的网址
+# 既是游戏、又是中继——朋友打开它、点「创建/加入」即可，无需任何配置。
+services:
+  - type: web
+    name: funcwar-relay
+    runtime: node
+    plan: free
+    branch: main
+    buildCommand: "npm install"
+    startCommand: "node server/relay.js"
+    envVars:
+      - key: PORT
+        sync: false

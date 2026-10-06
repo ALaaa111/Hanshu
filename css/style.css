@@ -664,6 +664,18 @@ input { font-family: inherit; }
   font-family: Consolas, "Courier New", ui-monospace, monospace;
 }
 .p2p-note { font-size: 12px; color: var(--text-soft); line-height: 1.5; }
+.p2p-link-row { display: flex; gap: 8px; align-items: center; margin: 8px 0 4px; flex-wrap: wrap; }
+.p2p-link-row .btn { flex: 0 0 auto; }
+.p2p-link-row .expr-input {
+  flex: 1 1 220px; min-width: 0; font-size: 13px; letter-spacing: 0;
+  color: var(--green-dark); background: #fff;
+}
+.link-toggle {
+  background: none; border: none; color: var(--green-dark);
+  font-size: 12.5px; cursor: pointer; padding: 4px 0; margin: 2px 0 4px;
+  text-decoration: underline dotted; text-underline-offset: 3px;
+}
+.link-toggle:hover { color: var(--green); }
 .p2p-join-row { display: flex; gap: 8px; margin-top: 6px; }
 .p2p-join-row .expr-input {
   width: 130px; flex: 0 0 auto; text-align: center;

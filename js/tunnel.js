@@ -45,6 +45,28 @@
   /* 单条消息上限（数据通道 / 中继都按文本转发，留足余量） */
   var CHUNK = 60 * 1024;
 
+  /* 默认中继地址（部署好的公共中继，wss://...）。留空 = 自动用「打开本游戏的网址」所在地址。
+   * 因为 relay.js 既托管页面又当中继，所以房主把 relay.js 部署到哪里，那个网址就是中继，
+   * 玩家打开它、点「创建房间」拿到的邀请链接里已自带中继地址，朋友点开即连，无需任何填写。 */
+  Tunnel.DEFAULT_RELAY = '';
+
+  /* 解析中继地址：优先级 显式传入 > 网址 ?relay= > DEFAULT_RELAY > 当前页面所在主机。
+   * 这样玩家永远不用手填服务器：同WiFi 用房主 LAN 地址、部署版用部署域名，都自动得出。 */
+  Tunnel.resolveRelayUrl = function (explicit) {
+    explicit = (explicit || '').trim();
+    if (explicit) return explicit;
+    try {
+      var q = new URLSearchParams(window.location.search).get('relay');
+      if (q) return q;
+    } catch (e) {}
+    if (Tunnel.DEFAULT_RELAY) return Tunnel.DEFAULT_RELAY;
+    try {
+      var proto = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+      return proto + (window.location.host || 'localhost:8081');
+    } catch (e) {}
+    return '';
+  };
+
   /* ---------------- 主体 ---------------- */
   function Tunnel(opts) {
     opts = opts || {};
@@ -63,7 +85,7 @@
     this._pending = null;        // 还没收到 welcome 时缓存的 create/join
     this.closed = false;
     this.opts = opts;
-    this._relayUrl = (opts.relayUrl || '').trim();
+    this._relayUrl = Tunnel.resolveRelayUrl(opts.relayUrl);
     this._chunks = null;
   }
 

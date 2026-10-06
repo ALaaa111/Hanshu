@@ -141,7 +141,7 @@
         <label class="field-label">连接方式</label>
         <div class="seg" id="seg-mp-link">
           <button class="seg-item active" data-value="server">服务器联机</button>
-          <button class="seg-item" data-value="tunnel">内网穿透联机（推荐）</button>
+          <button class="seg-item" data-value="tunnel">邀请链接联机（推荐）</button>
         </div>
         <p class="field-hint" id="mp-link-hint">需要一台常开的服务器（<code>node server/server.js</code>）；双方都能连上它即可对战。</p>
       </div>
@@ -152,26 +152,31 @@
         <p class="field-hint">默认指向当前打开本游戏的服务器。跨设备时改成房主的公网 IP，例如 ws://203.0.113.5:8080。</p>
       </div>
 
+      <button type="button" class="link-toggle" id="relay-adv-toggle">高级设置（一般不需要改）▾</button>
       <div class="field-group hidden" id="relay-url-row">
         <label class="field-label">中继服务器地址</label>
         <input type="text" id="relay-url" class="expr-input" placeholder="ws://localhost:8081" autocomplete="off">
-        <p class="field-hint">默认指向当前打开本游戏的服务器（即运行 <code>node server/relay.js</code> 那台）。异地联机请改成部署好的中继地址，例如 <code>wss://你的中继.平台域名</code>。</p>
+        <p class="field-hint">留空即可：默认用「你打开本游戏的网址」所在的中继（房主把游戏部署到某处后，那个网址本身就是中继）。只有当你把游戏部署到了别的地址、又想手动指定中继时才需要填这里。</p>
       </div>
 
       <div class="p2p-box hidden" id="p2p-box">
-        <p class="field-hint">房主的设备就是服务器（权威端），通过<b>中继服务器</b>帮你和朋友打通网络：能直连就直连（低延迟），直连不成（校园网 / 企业网 / 异地）自动走中继服务器中转，<b>一定能连上</b>。房主生成<b>房间号</b>发给朋友，朋友输入房间号即可加入，自动开局。</p>
+        <p class="field-hint">你和朋友<b>都不用懂任何技术</b>：房主点「创建房间」→ 把<b>邀请链接</b>发给朋友 → 朋友点开链接直接进房间、<b>自动开局</b>。不用记房间号，也不用填任何服务器地址。（只有极少数网络连不上时，才需要点开上面「高级设置」手动填中继地址。）</p>
         <div class="p2p-room">
           <div class="p2p-host-col">
-            <button class="btn btn-primary btn-sm" id="btn-room-create">🏠 我是房主：创建房间（生成房间号）</button>
+            <button class="btn btn-primary btn-sm" id="btn-room-create">🏠 我是房主：创建房间（生成邀请链接）</button>
             <div class="p2p-room-no hidden" id="p2p-room-no">
               <span class="p2p-room-label">房间号</span>
               <b class="p2p-room-num" id="p2p-room-num">······</b>
               <button class="btn btn-mini" id="btn-room-copy">复制房间号</button>
             </div>
-            <div class="p2p-note">把房间号发给朋友，他加入后<b>自动开局</b>，不用再复制任何长码。</div>
+            <div class="p2p-link-row hidden" id="p2p-link-row">
+              <button class="btn btn-primary btn-sm" id="btn-room-link">📋 复制邀请链接（朋友点开直接进）</button>
+              <input type="text" id="p2p-room-link" class="expr-input" readonly autocomplete="off">
+            </div>
+            <div class="p2p-note">点「复制邀请链接」把网址发给朋友，<b>他点开就直接进房间</b>，不用记房间号、也不用填任何服务器。</div>
           </div>
           <div class="p2p-guest-col">
-            <label class="field-label">我加入：输入房主的房间号</label>
+            <label class="field-label">我加入：输入房主的房间号（或直接点开他发来的链接）</label>
             <div class="p2p-join-row">
               <input type="text" id="p2p-room-input" class="expr-input" maxlength="6" inputmode="numeric"
                      placeholder="6 位数字" autocomplete="off">
