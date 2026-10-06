@@ -353,6 +353,25 @@ input { font-family: inherit; }
   background: rgba(255,255,255,.92); border: 1px solid var(--line);
   padding: 3px 8px; pointer-events: none; display: none;
 }
+/* 战场缩放控件（双指捏合 / 按钮 / 滚轮） */
+.zoom-ctrl {
+  position: absolute; right: 10px; top: 10px; z-index: 40;
+  display: flex; align-items: center; gap: 6px;
+  background: rgba(255,255,255,.92); border: 1px solid var(--line);
+  border-radius: 999px; padding: 4px 6px; box-shadow: var(--shadow);
+}
+.zoom-btn {
+  width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--line);
+  background: #fff; color: var(--text); font-size: 17px; line-height: 1;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  -webkit-tap-highlight-color: transparent; user-select: none;
+}
+.zoom-btn:active { background: var(--green-soft); }
+.zoom-reset { font-size: 15px; }
+.zoom-label {
+  min-width: 40px; text-align: center; font-size: 12px; color: var(--text-soft);
+  font-variant-numeric: tabular-nums;
+}
 /* 事件浮层：替代被取消的战斗日志，只在战场上短暂停留 */
 .stage-toast {
   position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%);

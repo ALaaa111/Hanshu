@@ -73,10 +73,79 @@
     this.isHost = false;        // 点对点联机中：本机就是权威端（房主的浏览器当服务器）
     this._mirrorExpr = '';      // 手绘拟合式镜像到函数输入框的当前值（用于避免覆盖手动修改）
     this._mpLink = 'server';    // 大厅选择的连接方式：server = 服务器联机，p2p = 点对点联机
+    /* 战场缩放（手机端看全边框 / 桌面端看细节） */
+    this.zoom = 1; this.panX = 0; this.panY = 0; this._zoomBound = false;
     this._bindStaticUI();
     this._bindSketch();
     this._bindWindows();
     this._bindLobby();
+    this._bindZoom();
+  };
+
+  /* ---------------- 战场缩放：按钮 + 双指捏合 + 滚轮 ---------------- */
+  GW.UI.prototype._bindZoom = function () {
+    var self = this;
+    if (this._zoomBound) return;
+    this._zoomBound = true;
+    var stage = $('stage');
+    if (!stage) return;
+
+    function apply() {
+      var z = self.zoom, px = self.panX, py = self.panY;
+      stage.style.transform = 'translate(' + px + 'px,' + py + 'px) scale(' + z + ')';
+      var lbl = $('zoom-label');
+      if (lbl) lbl.textContent = Math.round(z * 100) + '%';
+    }
+    this._applyStageZoom = apply;
+
+    function setZoom(z) {
+      self.zoom = Math.max(0.4, Math.min(4, z));
+      apply();
+    }
+    this.setZoom = function (z) { setZoom(z); };
+
+    // 按钮
+    var bOut = $('zoom-out'), bIn = $('zoom-in'), bReset = $('zoom-reset');
+    if (bOut) bOut.onclick = function () { setZoom(self.zoom / 1.3); };
+    if (bIn) bIn.onclick = function () { setZoom(self.zoom * 1.3); };
+    if (bReset) bReset.onclick = function () { self.zoom = 1; self.panX = 0; self.panY = 0; apply(); };
+
+    // 滚轮（桌面）
+    stage.addEventListener('wheel', function (e) {
+      e.preventDefault();
+      setZoom(self.zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12));
+    }, { passive: false });
+
+    // 双指捏合 + 双指拖动平移
+    var pinch = null;
+    function tdist(t) {
+      var dx = t[0].clientX - t[1].clientX, dy = t[0].clientY - t[1].clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+    function tmid(t) {
+      return { x: (t[0].clientX + t[1].clientX) / 2, y: (t[0].clientY + t[1].clientY) / 2 };
+    }
+    stage.addEventListener('touchstart', function (e) {
+      if (e.touches.length === 2) {
+        pinch = { d: tdist(e.touches), z: self.zoom, mid: tmid(e.touches) };
+        e.preventDefault();
+      }
+    }, { passive: false });
+    stage.addEventListener('touchmove', function (e) {
+      if (pinch && e.touches.length === 2) {
+        e.preventDefault();
+        var d = tdist(e.touches);
+        var m = tmid(e.touches);
+        setZoom(pinch.z * d / pinch.d);
+        self.panX += m.x - pinch.mid.x;
+        self.panY += m.y - pinch.mid.y;
+        pinch.mid = m;
+        apply();
+      }
+    }, { passive: false });
+    stage.addEventListener('touchend', function (e) {
+      if (e.touches.length < 2) pinch = null;
+    });
   };
 
   /* ---------------- 浮动次级窗口：拖动 + 最小化 ---------------- */
@@ -667,6 +736,10 @@
     this._assignDefaultSkills();
     this.renderer = new GW.Renderer($('stage'), this.game);
     this._attachGameEvents();
+    /* 新的对局：战场缩放复位（手机端默认略缩小，确保边框完整可见） */
+    var mob = window.matchMedia && window.matchMedia('(max-width: 900px)').matches;
+    this.zoom = mob ? 0.92 : 1; this.panX = 0; this.panY = 0;
+    if (this._applyStageZoom) this._applyStageZoom();
     $('badge-mode').textContent = C.MODE_NAME[this.game.mode] +
       (seats.n > 2 ? ' · ' + GW.teamLabel(seats.teams, seats.perTeam) : '');
     this.lastFired = '';

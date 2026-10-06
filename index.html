@@ -343,6 +343,12 @@
       <!-- 右侧：战场（占满整个区域，两块操作面板悬浮其上） -->
       <div class="stage-wrap" id="stage-wrap">
         <canvas id="stage" width="770" height="450"></canvas>
+        <div class="zoom-ctrl" id="zoom-ctrl">
+          <button class="zoom-btn" id="zoom-out" title="缩小（看全战场）">－</button>
+          <span class="zoom-label" id="zoom-label">100%</span>
+          <button class="zoom-btn" id="zoom-in" title="放大（看细节）">＋</button>
+          <button class="zoom-btn zoom-reset" id="zoom-reset" title="适配屏幕">⤢</button>
+        </div>
         <div class="stage-toast hidden" id="stage-toast"></div>
         <div class="stage-tip" id="stage-tip"></div>
       </div>
