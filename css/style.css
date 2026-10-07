@@ -694,6 +694,24 @@ input { font-family: inherit; }
 .p2p-seats-list .seat-wait { color: var(--text-soft); font-style: italic; }
 .p2p-seats .btn { width: 100%; }
 
+/* 联机自检：把「能不能联机」逐项实测出来，结果直接列在面板里 */
+.p2p-check {
+  margin: 10px 0 2px; padding: 8px 12px;
+  border: 1px dashed var(--line); background: #fbfdfc;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.p2p-check-hint { font-size: 12px; color: var(--text-soft); line-height: 1.45; flex: 1 1 160px; }
+.p2p-check-out { flex: 1 1 100%; display: flex; flex-direction: column; gap: 3px; margin-top: 2px; }
+.p2p-check-line {
+  display: flex; align-items: baseline; gap: 7px;
+  font-size: 12.5px; line-height: 1.5; color: var(--text-soft);
+}
+.p2p-check-line.ok { color: var(--green-deep); }
+.p2p-check-line.bad { color: var(--danger); }
+.p2p-check-mark { font-weight: 800; flex: 0 0 auto; }
+.p2p-check-name { font-weight: 700; flex: 0 0 auto; }
+.p2p-check-detail { flex: 1 1 auto; min-width: 0; word-break: break-all; }
+
 /* 兜底通道：连接码（不依赖任何信令服务器） */
 .p2p-code { margin: 10px 0 4px; }
 .p2p-code-details {
@@ -927,3 +945,19 @@ input { font-family: inherit; }
 @media (max-width: 760px) {
   .skill-fab { right: 14px; bottom: calc(108px + env(safe-area-inset-bottom)); width: 66px; height: 66px; }
 }
+
+/* ============================================================================
+ * .hidden 兜底（务必留在文件**最末尾**）
+ *
+ * 历史事故：.hidden 原来定义在中间，而 .p2p-room-no / .p2p-link-row 等规则写在它
+ * 后面、优先级又相同（都是单个 class），于是它们的 display:flex 把 display:none
+ * 覆盖掉了 —— 结果「你的房间号」面板和「复制邀请链接」按钮从进大厅起就一直显示，
+ * 点「创建房间」看起来就像「没反应」。
+ *
+ * .hidden 是全局工具类，必须永远赢。这里用 !important 一劳永逸，
+ * 以后新增样式不管写在哪、写成什么 display，都不会再把它顶掉。
+ * （已确认全项目没有任何 JS 用 element.style.display 去显示一个仍带 .hidden 的元素，
+ *   因此 !important 不会与内联样式打架。）
+ * ========================================================================== */
+.hidden { display: none !important; }
+

@@ -39,11 +39,21 @@
   /* 公共 MQTT 信令前缀：只作「牵线」，对局数据不经它 */
   var TOPIC_PREFIX = 'hanshu-gw/';
 
-  /* 公共 MQTT 信令服务器（按顺序尝试；均为免费公共经纪，无需注册部署）。
-   * EMQX 是国产开源项目，其公共经纪在国内网络实测可达、稳定。 */
+  /* 公共 MQTT 信令服务器 —— 四条互相独立的线路，全部免费、无需注册与部署。
+   * 建立房间时**同时**连上所有能连通的线路，任意一条通就算成功；
+   * 房主与客人只要在**任意一条**线路碰面即可牵线成功。这是「信令脆弱」的根治办法：
+   * 不再有单点故障 —— 某家挂了 / 被网络挡了 / 偶尔抖动，还有另外三家接着顶。
+   * 排序按本网络实测稳定性（4 轮各 4 次连接的成功率）：
+   *   broker.emqx.io        4/4  平均 1341ms（EMQX 官方，全球）
+   *   mqtt-dashboard.com    4/4  平均 1322ms（HiveMQ 官方公共面板经纪）
+   *   broker-cn.emqx.io     4/4  平均 1578ms（EMQX 中国节点，国内链路最短）
+   *   test.mosquitto.org    2/4  平均 1122ms（Eclipse 官方测试经纪，独立基础设施）
+   * 前三条稳定可用，第四条属于「多一条路多一次机会」，连不上也不影响开局。 */
   var BROKERS = [
     'wss://broker.emqx.io:8084/mqtt',
-    'wss://broker-cn.emqx.io:8084/mqtt'
+    'wss://mqtt-dashboard.com:8884/mqtt',
+    'wss://broker-cn.emqx.io:8084/mqtt',
+    'wss://test.mosquitto.org:8081/mqtt'
   ];
 
   /* ICE 服务器（玩家全程无感，浏览器自动选用）。
@@ -71,11 +81,12 @@
     }
   ];
 
-  var SIGNAL_TIMEOUT = 6000;      // 单次连接信令服务器的时间上限
-  var SIGNAL_ROUNDS = 2;          // 所有信令服务器都试过一遍算一轮，失败可再整轮重试
+  var SIGNAL_TIMEOUT = 6000;      // 单条信令线路的连接时间上限
+  var SIGNAL_ROUNDS = 3;          // 四条线路全挂算一轮，整轮可再重试（共 3 轮）
   var CONNECT_TIMEOUT = 25000;    // 客人从「加入」到「打通通道」的时间上限
   var GATHER_CAP = 2500;          // 连接码模式：收集本端地址的最长时间（越短出码越快）
   var RETRY_EVERY = 1200;         // 信令是「发出去就不管」（QoS0），关键消息要周期重发
+  var DEDUP_WINDOW = 60000;       // 多线路会造成同一消息重复到达，按 mid 去重的时间窗
 
   /* ---------------- 小工具 ---------------- */
 
@@ -349,10 +360,13 @@
     this.handlers = {};
     this.closed = false;
     this.connected = false;    /* 是否已与至少一位对手建立数据通道 */
-    this.sig = null;           /* MqttClient */
+    this.sigs = [];            /* 已连通的信令线路（MqttClient 数组，通常 ≥1 条） */
+    this.sig = null;           /* 兼容旧字段：第一条连通的线路 */
     this.myId = randId();      /* 本端在信令中的随机身份 */
     this.topic = null;
     this._opened = false;
+    this._seq = 0;             /* 消息序号，用于生成 mid */
+    this._seen = {};           /* mid → 收到时间（多线路去重） */
     this._timer = null;
     this._joinTimer = null;
     this._manualRec = null;
@@ -436,44 +450,75 @@
     });
   };
 
-  /* 依次尝试各公共信令服务器；全部失败后再整轮重试一次，尽力避免偶发抖动 */
+  /* 同时连接所有公共信令线路：任意一条连通即视为成功（通常 1~2 秒就够）。
+   * 若整轮四条全挂，等 0.9 秒再整轮重试（公共经纪偶发抖动很常见，重试一次往往就通）。
+   * 连上的线路继续留在后台，连上的不止一条时会并发使用，任意一条可达即可通信。 */
   P2P.prototype._openSignal = function (cb) {
     var self = this;
     this.topic = TOPIC_PREFIX + this.code;
-    var idx = 0, round = 0, lastErr = null;
+    var settled = false, round = 0, lastErr = null;
+    var live = {};   /* url → client：已连通的线路，重复 sweep 时不再重连同一家 */
 
-    function attempt() {
-      if (self.closed) return;
-      if (idx >= BROKERS.length) {
-        idx = 0;
-        round++;
-        if (round >= SIGNAL_ROUNDS) return cb(lastErr || new Error('信令服务器不可达'));
-        self._status('信令服务器没有响应，正在重试…', 'info');
-        return setTimeout(attempt, 1200);
+    function finish(err) { if (settled) return; settled = true; cb(err || null); }
+
+    function sweep() {
+      if (self.closed || settled) return;
+      if (self.sigs.length) return;                       /* 已有线路，收工 */
+      if (round >= SIGNAL_ROUNDS) return finish(lastErr || new Error('信令服务器不可达'));
+      round++;
+      if (round > 1) self._status('信令线路没有响应，正在重试（第 ' + round + ' 轮）…', 'info');
+
+      var failed = 0;
+      for (var i = 0; i < BROKERS.length; i++) {
+        (function (url, idx) {
+          if (live[url]) return;                          /* 这条已经连上或正在连 */
+          live[url] = true;
+          var client = new MqttClient(url, 'hgw-' + self.myId + '-' + idx);
+          client.connect(SIGNAL_TIMEOUT).then(function () {
+            if (self.closed) { client.close(); return; }
+            client.onMessage = function (t, p) { self._onSignal(t, p); };
+            client.onClose = function () { self._dropSig(client); };
+            client.subscribe(self.topic + '/#');
+            self.sigs.push(client);
+            if (!self.sig) self.sig = client;
+            /* 第一条接通后稍等 SUBACK 再回调，免得客人刚发出的 join 还没订阅上 */
+            if (!settled) setTimeout(function () { if (!self.closed) finish(null); }, 250);
+          })['catch'](function (e) {
+            lastErr = e;
+            delete live[url];
+            failed++;
+            /* 本轮四条全挂 → 稍后整轮再来 */
+            if (failed >= BROKERS.length && !self.sigs.length) setTimeout(sweep, 900);
+          });
+        })(BROKERS[i], i);
       }
-      var i = idx++;
-      var client = new MqttClient(BROKERS[i], 'hgw-' + self.myId);
-      client.connect(SIGNAL_TIMEOUT).then(function () {
-        if (self.closed) { client.close(); return; }
-        self.sig = client;
-        client.onMessage = function (topic, payload) { self._onSignal(topic, payload); };
-        client.onClose = function () { self._onSignalLost(); };
-        client.subscribe(self.topic + '/#');
-        /* 订阅生效后再回调（留一点时间等 SUBACK） */
-        setTimeout(function () { if (!self.closed) cb(null); }, 250);
-      })['catch'](function (e) {
-        lastErr = e;
-        attempt();
-      });
     }
-    attempt();
+    sweep();
   };
 
+  /** 发信令：向**所有**已连通的线路各发一份，任意一条送达即可（其余为冗余） */
   P2P.prototype._sigSend = function (to, obj) {
-    if (!this.sig || !this.sig.ready) return false;
+    if (!this.sigs.length || !this.topic) return false;
     obj.from = this.myId;
     obj.to = to;
-    return this.sig.publish(this.topic + '/' + this.myId, JSON.stringify(obj));
+    obj.mid = this.myId + ':' + (this._seq++);
+    var json = JSON.stringify(obj);
+    var sent = false;
+    for (var i = 0; i < this.sigs.length; i++) {
+      if (this.sigs[i].ready && this.sigs[i].publish(this.topic + '/' + this.myId, json)) sent = true;
+    }
+    return sent;
+  };
+
+  /** 多线路会让同一条消息到达多次（也可能是发信方刻意重发），按 mid 去重
+   *  注意：刻意的重发会生成新的 mid，因此不会被这里挡掉。 */
+  P2P.prototype._seenBefore = function (mid) {
+    if (!mid) return false;
+    var now = Date.now();
+    if (this._seen[mid]) return true;
+    this._seen[mid] = now;
+    for (var k in this._seen) if (now - this._seen[k] > DEDUP_WINDOW) delete this._seen[k];
+    return false;
   };
 
   P2P.prototype._onSignal = function (topic, payload) {
@@ -481,6 +526,7 @@
     var msg;
     try { msg = JSON.parse(payload); } catch (e) { return; }
     if (!msg || !msg.t || msg.from === this.myId) return;
+    if (this._seenBefore(msg.mid)) return;
     var mine = (msg.to === '*' || msg.to === this.myId || (msg.to === 'host' && this.role === 'host'));
     if (!mine) return;
     switch (msg.t) {
@@ -527,13 +573,17 @@
   };
 
   P2P.prototype._onAnswer = function (msg) {
+    var self = this;
     var rec = this._findLink(msg.from);
     if (!rec) return;
-    rec.pc.setRemoteDescription(new RTCSessionDescription(msg.sdp)).then(function () {
-      rec.answered = true;
-    })['catch'](function () {
-      this._dropLink(rec, '协商失败');
-    }.bind(this));
+    /* 房主可能重发 offer → 客人重发同一份应答；对同一个 pc 重复设置 remote answer
+     * 会抛 InvalidStateError 反而把连接打断，所以这里只认第一次。 */
+    if (rec.answered || (rec.pc && rec.pc.signalingState !== 'have-local-offer')) return;
+    rec.answered = true;
+    rec.pc.setRemoteDescription(new RTCSessionDescription(msg.sdp))['catch'](function (e) {
+      rec.answered = false;
+      self._dropLink(rec, '协商失败：' + (e && e.message ? e.message : e));
+    });
   };
 
   P2P.prototype._onIce = function (msg) {
@@ -744,11 +794,20 @@
 
   P2P.prototype._cancelConnectTimer = function () { clearTimeout(this._timer); };
 
+  /** 某条信令线路掉线：只有**所有**线路都断了才当作信令失效 */
+  P2P.prototype._dropSig = function (client) {
+    var i = this.sigs.indexOf(client);
+    if (i >= 0) this.sigs.splice(i, 1);
+    if (this.sig === client) this.sig = this.sigs[0] || null;
+    if (this.closed || this.sigs.length) return;
+    this._onSignalLost();
+  };
+
   P2P.prototype._onSignalLost = function () {
     if (this.closed) return;
     /* 信令断了不影响已建立的直连；只在还没连上时提示 */
     if (!this.connected) {
-      this._fail('与公共信令服务器的连接断了。请重试，或改用 <b>「连接码」</b> 直连（不依赖任何服务器）。');
+      this._fail('公共信令服务器全部断开。请重试，或改用 <b>「连接码」</b> 直连（不依赖任何服务器）。');
     } else {
       this._status('公共信令连接已断开（已建立的对局不受影响）。', 'info');
     }
@@ -822,7 +881,10 @@
       try { if (links[i].dc) links[i].dc.close(); } catch (e) { /* 忽略 */ }
       try { if (links[i].pc) links[i].pc.close(); } catch (e) { /* 忽略 */ }
     }
-    if (this.sig) { try { this.sig.close(); } catch (e) { /* 忽略 */ } this.sig = null; }
+    var sigs = this.sigs.slice();
+    this.sigs = [];
+    this.sig = null;
+    for (var j = 0; j < sigs.length; j++) { try { sigs[j].close(); } catch (e) { /* 忽略 */ } }
     this.connected = false;
   };
 
@@ -839,6 +901,65 @@
   /** 一键房间号还需要 WebSocket（连接码模式不需要） */
   GW.p2pCloudSupported = function () {
     return typeof RTCPeerConnection !== 'undefined' && typeof WebSocket !== 'undefined';
+  };
+
+  /* ---------------- 联机自检 ----------------
+   * 把「能不能联机」的每个前提单独实测一遍，给出玩家看得懂的结果。
+   * 用途：以后遇到「连不上」，先点一下自检，一眼看出卡在哪一环。 */
+
+  /** 逐条实测公共信令线路，返回 [{ url, ok, ms, err }] */
+  GW.P2P.probeBrokers = function (timeoutMs) {
+    if (typeof WebSocket === 'undefined') return Promise.resolve([]);
+    var jobs = BROKERS.map(function (url) {
+      var t0 = Date.now();
+      var client = new MqttClient(url, 'hgw-check-' + randId());
+      return client.connect(timeoutMs || 5000).then(function () {
+        var ms = Date.now() - t0;
+        client.close();
+        return { url: url, ok: true, ms: ms };
+      })['catch'](function (e) {
+        return { url: url, ok: false, ms: Date.now() - t0, err: (e && e.message) || '连不上' };
+      });
+    });
+    return Promise.all(jobs);
+  };
+
+  /** 完整自检 → Promise<[{ name, ok, detail }]> */
+  GW.P2P.selfCheck = function () {
+    var out = [];
+    var push = function (name, ok, detail) { out.push({ name: name, ok: ok, detail: detail }); };
+
+    var loc = (typeof location !== 'undefined' && location) ? location : null;
+    var proto = loc ? String(loc.protocol) : '';
+    var host = loc ? String(loc.hostname) : '';
+    var secure = (proto === 'https:' || proto === 'file:' || host === 'localhost' || host === '127.0.0.1' || host === '');
+    push('页面安全上下文', secure, secure ? ('✓ ' + (proto || '未知') + '//' + (host || '-')) :
+      ('✗ 当前是 ' + proto + '，浏览器会禁用 WebRTC —— 请用线上 https 网址打开'));
+
+    var hasRtc = (typeof RTCPeerConnection !== 'undefined');
+    push('WebRTC 支持', hasRtc, hasRtc ? '✓ 可用（点对点直连靠它）' : '✗ 浏览器不支持，请换 Chrome / Edge / Safari 新版');
+
+    var hasWs = (typeof WebSocket !== 'undefined');
+    push('WebSocket 支持', hasWs, hasWs ? '✓ 可用（一键房间号靠它牵线）' : '✗ 浏览器不支持，只能用「连接码」');
+
+    push('ICE 服务器', ICE_SERVERS.length > 0,
+      '✓ 已配置 ' + ICE_SERVERS.length + ' 组（STUN 打洞 + TURN 兜底中转）');
+
+    if (!hasWs) return Promise.resolve(out);
+
+    return GW.P2P.probeBrokers(6000).then(function (list) {
+      var good = 0;
+      for (var i = 0; i < list.length; i++) {
+        var b = list[i];
+        if (b.ok) good++;
+        push('信令线路 ' + (i + 1) + '/' + list.length, b.ok,
+          b.ok ? ('✓ ' + b.ms + 'ms  ' + b.url) : ('✗ ' + b.err + '  ' + b.url));
+      }
+      push('结论', good > 0, good > 0
+        ? ('✓ ' + good + ' 条线路可用，可以正常开房（多条同时在线，用哪条都能牵上手）')
+        : '✗ 所有公共信令线路都连不上 —— 请改用下方 <b>「连接码」</b> 直连，那条路不需要任何服务器。');
+      return out;
+    })['catch'](function () { return out; });
   };
 
 })(typeof window !== 'undefined' ? window : globalThis);

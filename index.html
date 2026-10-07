@@ -4,8 +4,27 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#2f9e5c">
+<meta name="gwb-build" content="2026-10-07.4">
 <title>函数战争 · Graphwar 中文复刻版</title>
-<link rel="stylesheet" href="css/style.css">
+<!--
+  ⚠ 缓存击穿（改完代码上传后，务必同步更新下面两处版本号）：
+     1) 本文件的 GWASSET 常量（下面那段内联脚本里）
+     2) 本文件末尾所有 css/js 引用后面的 ?v=2026-10-07.4
+  GitHub Pages 强制 Cache-Control: max-age=600，浏览器会把旧页面缓存 10 分钟。
+  带上 ?v= 之后，只要 index.html 一刷新，所有 js/css 都会跟着换成新的，不会再
+  出现「上传了新代码、页面还是旧的」这种问题。
+-->
+<script>
+  /* 资源版本号：改代码时连同下方 ?v= 一起改，用来强制浏览器重新下载 js/css */
+  window.GWASSET = '2026-10-07.4';
+  (function () {
+    try {
+      console.log('%c函数战争 构建 ' + window.GWASSET,
+        'background:#2f9e5c;color:#fff;padding:2px 6px;border-radius:3px');
+    } catch (e) { /* 忽略 */ }
+  })();
+</script>
+<link rel="stylesheet" href="css/style.css?v=2026-10-07.4">
 </head>
 <body>
 
@@ -27,7 +46,8 @@
         <button class="btn btn-ghost btn-lg" id="btn-menu-tutorial">新手教程</button>
         <button class="btn btn-ghost btn-lg" id="btn-menu-help">玩法说明</button>
       </div>
-      <p class="menu-foot">中文版 v4.1 · 纯前端零依赖，双击即玩；联机为纯点对点（P2P）：房主点「创建房间」→ 把邀请链接发给朋友，他点开即玩。连不上就用「连接码」，不依赖任何服务器。</p>
+      <p class="menu-foot">中文版 v4.2 · 构建 <span id="foot-build">········</span> · 纯前端零依赖，双击即玩；联机为纯点对点（P2P）：房主点「创建房间」→ 把邀请链接发给朋友，他点开即玩。连不上就点「🔍 联机自检」，或用「连接码」（不依赖任何服务器）。<br>
+        看不到这一行、或版本号对不上？说明浏览器还在用旧缓存 —— 按 <b>Ctrl + Shift + R</b>（手机：无痕窗口打开）强制刷新。</p>
     </div>
   </section>
 
@@ -222,6 +242,13 @@
               <button class="btn btn-primary btn-sm" id="btn-room-join">加入房间</button>
             </div>
           </div>
+        </div>
+
+        <!-- 联机自检：任何「连不上」都能在这里一眼看出卡在哪一环 -->
+        <div class="p2p-check">
+          <button class="btn btn-mini" id="btn-p2p-check">🔍 联机自检</button>
+          <span class="p2p-check-hint">连不上、或想确认网络行不行，点这里实测一遍</span>
+          <div class="p2p-check-out hidden" id="p2p-check-out"></div>
         </div>
 
         <!-- 兜底通道：连接码（不依赖任何信令服务器，任何网络环境都能用） -->
@@ -691,22 +718,34 @@
 })();
 </script>
 
-<script src="js/constants.js"></script>
-<script src="js/expression.js"></script>
-<script src="js/terrain.js"></script>
-<script src="js/trajectory.js"></script>
-<script src="js/game.js"></script>
-<script src="js/ai.js"></script>
-<script src="js/sketch.js"></script>
-<script src="js/render.js"></script>
-<script src="js/tutorial.js"></script>
+<script src="js/constants.js?v=2026-10-07.4"></script>
+<script src="js/expression.js?v=2026-10-07.4"></script>
+<script src="js/terrain.js?v=2026-10-07.4"></script>
+<script src="js/trajectory.js?v=2026-10-07.4"></script>
+<script src="js/game.js?v=2026-10-07.4"></script>
+<script src="js/ai.js?v=2026-10-07.4"></script>
+<script src="js/sketch.js?v=2026-10-07.4"></script>
+<script src="js/render.js?v=2026-10-07.4"></script>
+<script src="js/tutorial.js?v=2026-10-07.4"></script>
 <!--
-  联机：纯 WebRTC 点对点，零第三方 SDK。
-  牵线走「公共 MQTT 信令」（js/p2p.js 内置极简 MQTT 客户端，无需任何库、无需部署），
+  联机：纯 WebRTC 点对点，零第三方 SDK、零 CDN（不加载任何外部脚本，
+  所以不存在「某个 CDN 被墙导致联机组件加载不出来」的问题）。
+  牵线走「公共 MQTT 信令」：js/p2p.js 内置极简 MQTT 客户端，四条线路并行连接；
   对局数据走 WebRTC 数据通道；另有「连接码」兜底通道，完全不依赖任何服务器。
 -->
-<script src="js/p2p.js"></script>
-<script src="js/ui.js"></script>
-<script src="js/main.js"></script>
+<script src="js/p2p.js?v=2026-10-07.4"></script>
+<script src="js/ui.js?v=2026-10-07.4"></script>
+<script src="js/main.js?v=2026-10-07.4"></script>
+<script>
+  (function () {
+    try {
+      var b = document.getElementById('foot-build');
+      if (b) b.textContent = window.GWASSET || '?';
+      var B = (window.GW && GW.P2P && GW.P2P.BROKERS) || [];
+      console.log('联机信令线路：' + B.length + ' 条并行（' + B.join('、') + '）');
+      if (window.GW && GW.P2P && GW.P2P.selfCheck) console.log('联机自检：在大厅点「🔍 联机自检」，或在此执行 GW.P2P.selfCheck().then(console.table)');
+    } catch (e) { /* 忽略 */ }
+  })();
+</script>
 </body>
 </html>

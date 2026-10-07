@@ -1904,6 +1904,42 @@
         self._lobbyStatus('复制没成功：应答码框已选中，长按手动复制即可。', 'info');
       });
     };
+
+    /* 🔍 联机自检：逐项实测「能不能联机」，把结果直接列在大厅里。
+     * 以后再遇到「连不上」，先点这个，一眼看出卡在哪一环。 */
+    $('btn-p2p-check').onclick = function () {
+      var out = $('p2p-check-out');
+      if (!GW.P2P || !GW.P2P.selfCheck) {
+        self._lobbyStatus('当前页面是旧缓存，没有自检功能 —— 请按 <b>Ctrl + Shift + R</b> 强制刷新后重试。', 'error');
+        return;
+      }
+      out.classList.remove('hidden');
+      out.innerHTML = '<div class="p2p-check-line">正在实测网络与信令线路…（约 2~7 秒）</div>';
+      GW.P2P.selfCheck().then(function (rows) {
+        var html = '', envOk = true, verdictOk = true;
+        for (var i = 0; i < rows.length; i++) {
+          var r = rows[i];
+          /* 逐条线路的结果只是「情报」：只要还有别的线路可用就不算失败，
+           * 真正的结论看最后那条「结论」行，环境检查则每一项都必须过。 */
+          var isLine = /^信令线路 \d+\//.test(r.name);
+          if (!isLine) { if (!r.ok) envOk = false; if (r.name === '结论') verdictOk = r.ok; }
+          html += '<div class="p2p-check-line ' + (r.ok ? 'ok' : 'bad') + '">' +
+            '<span class="p2p-check-mark">' + (r.ok ? '✓' : '✗') + '</span>' +
+            '<span class="p2p-check-name">' + r.name + '</span>' +
+            '<span class="p2p-check-detail">' + r.detail + '</span></div>';
+        }
+        out.innerHTML = html;
+        var fine = envOk && verdictOk;
+        var lineOk = rows.filter(function (r) { return /^信令线路 \d+\//.test(r.name) && r.ok; }).length;
+        var lineAll = rows.filter(function (r) { return /^信令线路 \d+\//.test(r.name); }).length;
+        self._lobbyStatus(fine
+          ? ('自检通过 ✓ ' + lineAll + ' 条信令线路里有 ' + lineOk + ' 条在线，直接创建房间就行。')
+          : '自检发现问题（看上方打 ✗ 的项）。若信令线路全挂，请用下方 <b>「连接码」</b> —— 那条路不需要任何服务器。',
+          fine ? 'ok' : 'error');
+      })['catch'](function (e) {
+        out.innerHTML = '<div class="p2p-check-line bad">自检失败：' + ((e && e.message) ? e.message : e) + '</div>';
+      });
+    };
   };
 
   /** 断开并丢弃当前联机对象（切换流程时先收尾，避免残留连接抢事件） */
