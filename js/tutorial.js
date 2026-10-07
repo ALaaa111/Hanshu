@@ -173,7 +173,8 @@
       body: '<b>联机对战</b>让你和其他玩家在同一张地图上隔空对炮，<b>全程零配置、不需要任何人开服务器</b>。' +
         '<ul><li>房主的浏览器就是「权威端」：由它计算弹道，再同步给所有客人，大家看到的是同一颗炮弹；</li>' +
         '<li>客人之间、客人与房主之间都是<b>点对点直连</b>（走 WebRTC），不需要第三方服务器，也没有账号、房间密码这些麻烦；</li>' +
-        '<li>房主 + 最多 7 位客人，<b>共 2~8 人</b>都能同图对战。</li></ul>' +
+        '<li>房主 + 最多 7 位客人，<b>共 2~8 人</b>都能同图对战；</li>' +
+        '<li>牵线有两条路：<b>「一键房间号」</b>（省事）和 <b>「连接码」</b>（不依赖任何服务器，连不上时用它）。</li></ul>' +
         '下面几步带你过一遍大厅里的每个按钮。'
     },
     {
@@ -194,7 +195,7 @@
     {
       title: '创建房间（房主）',
       target: '#btn-room-create',
-      body: '房主点 <b>「🏠 我是房主：创建房间」</b>：页面会立刻给出一个 <b>5 位房间号</b>，' +
+      body: '房主点 <b>「🏠 我是房主：创建房间」</b>：马上就会给出一个 <b>6 位房间号</b>，' +
         '并生成一条 <b>邀请链接</b>。' +
         '<div class="tut-task">把「邀请链接」发给朋友（他点开直接进房间），' +
         '或者把「房间号」发给他、让他自己输——两种都行，不用开任何服务器。</div>'
@@ -207,6 +208,17 @@
         '<li><b>📋 复制邀请链接</b>：朋友点开这条网址，会自动进入大厅、自动加入你的房间。</li></ul>'
     },
     {
+      title: '连不上？还有「连接码」',
+      target: '#p2p-code',
+      body: '「一键房间号」要靠一台<b>公共信令服务器</b>牵线，个别网络（校园网、公司专网、部分运营商）会把它挡掉，' +
+        '表现就是<b>一直转圈、迟迟连不上</b>。' +
+        '<ul><li>这时展开大厅下方的 <b>「连不上？点这里用连接码」</b>；</li>' +
+        '<li>房主点 <b>「① 生成邀请码」</b> → 复制发给朋友；朋友粘进去点 <b>「② 生成应答码」</b> → 复制发回；</li>' +
+        '<li>房主把应答码粘进来点 <b>「③ 完成连接」</b>，两人就直连上了。</li></ul>' +
+        '<div class="tut-task">这条路<b>不经过任何服务器</b>（只是把连接信息编成一段文字让你们互相发一下），' +
+        '所以只要两边都能上网，它就一定能连上。</div>'
+    },
+    {
       title: '看看谁进来了 · 开始对战',
       target: '#p2p-seats',
       body: '每进来一位朋友，房主侧的<b>玩家列表</b>就多一行（座位名按赛制显示成「第 N 队 · M 号」）。' +
@@ -217,7 +229,7 @@
     {
       title: '加入房间（朋友）',
       target: ['#p2p-room-input', '#btn-room-join'],
-      body: '朋友这边不用点邀请链接也一样能进：在右边 <b>「我加入」</b> 输入框里填房主的 <b>5 位房间号</b>，' +
+      body: '朋友这边不用点邀请链接也一样能进：在右边 <b>「我加入」</b> 输入框里填房主的 <b>6 位房间号</b>，' +
         '点 <b>「加入房间」</b> 即可（大小写、空格都无所谓，会自动规整）。'
     },
     {
@@ -284,19 +296,20 @@
 
   GW.Tutorial.prototype.render = function () {
     var step = this.steps[this.index];
+    var total = this.steps.length;                 /* 联机教程 8 步、单机教程 13 步，必须用当前这一套 */
     var layer = document.getElementById('tutorial-layer');
-    document.getElementById('tut-step-tag').textContent = '第 ' + (this.index + 1) + ' / ' + this.steps.length + ' 步';
+    document.getElementById('tut-step-tag').textContent = '第 ' + (this.index + 1) + ' / ' + total + ' 步';
     document.getElementById('tut-title').textContent = step.title;
     document.getElementById('tut-body').innerHTML = step.body;
     document.getElementById('tut-prev').disabled = this.index === 0;
     var nextBtn = document.getElementById('tut-next');
-    nextBtn.textContent = this.index === STEPS.length - 1 ? '完成教程' : '下一步';
+    nextBtn.textContent = this.index === total - 1 ? '完成教程' : '下一步';
     var required = step.require && !this.done[step.require];
     nextBtn.disabled = !!required;
 
     var dots = document.getElementById('tut-dots');
     dots.innerHTML = '';
-    for (var i = 0; i < STEPS.length; i++) {
+    for (var i = 0; i < total; i++) {
       var d = document.createElement('span');
       d.className = 'tut-dot' + (i < this.index ? ' done' : (i === this.index ? ' now' : ''));
       dots.appendChild(d);

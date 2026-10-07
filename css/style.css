@@ -694,8 +694,36 @@ input { font-family: inherit; }
 .p2p-seats-list .seat-wait { color: var(--text-soft); font-style: italic; }
 .p2p-seats .btn { width: 100%; }
 
+/* 兜底通道：连接码（不依赖任何信令服务器） */
+.p2p-code { margin: 10px 0 4px; }
+.p2p-code-details {
+  border: 1px dashed var(--line); background: #fff; padding: 8px 12px;
+}
+.p2p-code-details[open] { border-style: solid; border-color: var(--green); }
+.p2p-code-details > summary {
+  cursor: pointer; font-size: 13px; font-weight: 700; color: var(--green-deep);
+  list-style: none; padding: 2px 0;
+}
+.p2p-code-details > summary::-webkit-details-marker { display: none; }
+.p2p-code-details > summary::before { content: '▸ '; }
+.p2p-code-details[open] > summary::before { content: '▾ '; }
+.p2p-code-details > .field-hint { margin: 8px 0; }
+.p2p-code-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 4px; }
+.p2p-code-col { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.p2p-code-title { font-size: 13px; font-weight: 700; color: var(--green-dark); }
+.p2p-code-ta {
+  width: 100%; box-sizing: border-box; resize: vertical;
+  font-family: Consolas, "Courier New", ui-monospace, monospace;
+  font-size: 11.5px; line-height: 1.45; color: var(--text);
+  padding: 7px 8px; border: 1px solid var(--line); background: #f8fcfa;
+  word-break: break-all;
+}
+.p2p-code-ta[readonly] { background: #f2f9f5; color: var(--green-dark); }
+.p2p-code-col .btn { width: 100%; }
+
 @media (max-width: 560px) {
   .p2p-room { grid-template-columns: 1fr; }
+  .p2p-code-cols { grid-template-columns: 1fr; }
 }
 .syntax-grid { width: 100%; border-collapse: collapse; margin: 6px 0 4px; }
 .syntax-grid th, .syntax-grid td { border: 1px solid var(--line); padding: 5px 9px; text-align: left; font-size: 12.5px; }

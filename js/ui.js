@@ -73,7 +73,9 @@
     this.botTeam = -1;          // 联机中由 AI 顶替的阵营下标（−1 表示无）
     this.isHost = false;        // 点对点联机中：本机就是权威端（房主的浏览器当服务器）
     this._mirrorExpr = '';      // 手绘拟合式镜像到函数输入框的当前值（用于避免覆盖手动修改）
-    this._mpLink = 'room';      // 联机方式：room = 房间联机（PeerJS 公共云信令 + WebRTC 直连，零服务器）
+    this._mpLink = 'room';      // 联机方式：room = 点对点直连（房主浏览器即权威端）
+    this._mpTransport = 'cloud';// 牵线通道：cloud = 一键房间号（公共信令）；manual = 连接码（零服务器）
+    this._busyTimer = null;     // 联机请求的按钮锁定兜底计时器
     /* 战场缩放（手机端看全边框 / 桌面端看细节） */
     this.zoom = 1; this.panX = 0; this.panY = 0; this._zoomBound = false;
     this.mpTurnTime = 120;      // 联机创建房间时的每回合时间（秒），0 = 不限
@@ -1791,21 +1793,34 @@
 
     $('btn-mp-back').onclick = function () { self._leaveLobby(); };
 
-    /* ---------------- 房间联机（房主浏览器即权威端，数据点对点直连） ---------------- */
+    /* ---------------- 联机：房主浏览器即权威端，数据点对点直连 ---------------- */
+
+    /* 防止「点一下没反应就一直点」：请求发出后先把按钮锁住，出结果再解锁 */
+    function lockBusy() {
+      self._lobbyBusy(true);
+      clearTimeout(self._busyTimer);
+      self._busyTimer = setTimeout(function () { self._lobbyBusy(false); }, 20000);
+    }
 
     /* 房主：创建房间（向公共信令云登记房间号）→ 朋友输房间号加入，数据走 WebRTC 直连 */
     $('btn-room-create').onclick = function () {
-      var p = self._mkRoomP2P('host');
+      self._resetNet();
+      var p = self._mkRoomP2P('host', 'cloud');
       if (!p) return;
       self.net = p;
+      lockBusy();
+      self._lobbyStatus('正在创建房间…（一般 1~3 秒）', 'info');
       p.hostRoom();
     };
     $('btn-room-join').onclick = function () {
       var num = $('p2p-room-input').value.trim();
       if (!num) { self._lobbyStatus('请先输入房主发来的房间号。', 'error'); return; }
-      var p = self._mkRoomP2P('guest');
+      self._resetNet();
+      var p = self._mkRoomP2P('guest', 'cloud');
       if (!p) return;
       self.net = p;
+      lockBusy();
+      self._lobbyStatus('正在加入房间 <b>' + escapeHtml(num.toUpperCase()) + '</b> …', 'info');
       p.joinRoom(num);
     };
     $('btn-room-copy').onclick = function () {
@@ -1828,7 +1843,6 @@
         self._lobbyStatus('复制没成功：链接框已选中——长按选择「复制」，发给朋友即可。', 'info');
       });
     };
-    /* 手动复制连接码（旧方案）已移除：联机房间自动生成邀请链接，房主只需发链接 */
 
     /* 房主：手动开始对战（人没齐也能开，按已到人数开局） */
     $('btn-room-start').onclick = function () {
@@ -1839,6 +1853,71 @@
       }
       self._p2pHostStart();
     };
+
+    /* ---------------- 兜底通道：连接码（不依赖任何信令服务器） ---------------- */
+
+    /* 房主：① 生成邀请码 */
+    $('btn-code-offer').onclick = function () {
+      self._resetNet();
+      var p = self._mkRoomP2P('host', 'manual');
+      if (!p) return;
+      self.net = p;
+      lockBusy();
+      self._lobbyStatus('正在生成邀请码…（约 1~3 秒）', 'info');
+      p.manualCreate();
+    };
+    $('btn-code-offer-copy').onclick = function () {
+      var v = $('code-offer').value;
+      if (!v) { self._lobbyStatus('请先点「① 生成邀请码」。', 'error'); return; }
+      copyText(v, $('code-offer'), function () {
+        self._lobbyStatus('邀请码已复制 —— 发给朋友，等他回发「应答码」。', 'ok');
+      }, function () {
+        self._lobbyStatus('复制没成功：邀请码框已选中，长按手动复制即可。', 'info');
+      });
+    };
+    /* 房主：③ 粘贴应答码 → 完成直连 */
+    $('btn-code-finish').onclick = function () {
+      if (!self.net || !self.net._manualRec) { self._lobbyStatus('请先点「① 生成邀请码」。', 'error'); return; }
+      var v = $('code-answer-in').value.trim();
+      if (!v) { self._lobbyStatus('请先把朋友发回的「应答码」粘进来。', 'error'); return; }
+      self._lobbyStatus('正在与朋友直连…', 'info');
+      self.net.manualFinish(v);
+    };
+
+    /* 朋友：② 粘贴邀请码 → 生成应答码 */
+    $('btn-code-accept').onclick = function () {
+      var v = $('code-offer-in').value.trim();
+      if (!v) { self._lobbyStatus('请先把房主发来的「邀请码」粘进来。', 'error'); return; }
+      self._resetNet();
+      var p = self._mkRoomP2P('guest', 'manual');
+      if (!p) return;
+      self.net = p;
+      lockBusy();
+      p.manualAccept(v);
+    };
+    $('btn-code-answer-copy').onclick = function () {
+      var v = $('code-answer').value;
+      if (!v) { self._lobbyStatus('请先点「② 生成应答码」。', 'error'); return; }
+      copyText(v, $('code-answer'), function () {
+        self._lobbyStatus('应答码已复制 —— 发回给房主，他就会和你直连。', 'ok');
+      }, function () {
+        self._lobbyStatus('复制没成功：应答码框已选中，长按手动复制即可。', 'info');
+      });
+    };
+  };
+
+  /** 断开并丢弃当前联机对象（切换流程时先收尾，避免残留连接抢事件） */
+  GW.UI.prototype._resetNet = function () {
+    if (this.net) { try { this.net.quit(); } catch (e) { /* 忽略 */ } this.net = null; }
+  };
+
+  /** 联机请求进行中：锁住会重复触发的按钮，避免连点产生多个房间 / 多条连接 */
+  GW.UI.prototype._lobbyBusy = function (on) {
+    var ids = ['btn-room-create', 'btn-room-join', 'btn-code-offer', 'btn-code-accept'];
+    for (var i = 0; i < ids.length; i++) {
+      var b = $(ids[i]);
+      if (b) b.disabled = !!on;
+    }
   };
 
   /** 以编程方式切换某个分段控件的值（群组内部只保留一个 active） */
@@ -1866,22 +1945,33 @@
     this._mpLink = 'room';
     this._syncMpRoster();
     $('p2p-box').classList.remove('hidden');
-    this._lobbyStatus('联机（点对点直连）：房主点「🏠 创建房间」→ 把<b>邀请链接</b>发给朋友 → 朋友点开链接<b>直接进房间、自动开局</b>。数据在你们设备之间直连，不用开任何服务器。', 'info');
+    this._lobbyBusy(false);
+    this._lobbyStatus('联机（点对点直连）：房主点「🏠 创建房间」→ 把<b>邀请链接</b>发给朋友 → 朋友点开链接<b>直接进房间、自动开局</b>。' +
+      '对局数据在你们设备之间直连，不用开任何服务器。' +
+      '若一直连不上，展开下方 <b>「连不上？点这里用连接码」</b> —— 那条路不需要任何服务器，一定能连。', 'info');
   };
 
-  /** 联机（纯 P2P，星型拓扑：客人只连房主）：房主 / 客人通用工厂 */
-  GW.UI.prototype._mkP2P = function (role) {
+  /** 联机（纯 P2P，星型拓扑：客人只连房主）：房主 / 客人通用工厂
+   *  transport：'cloud' = 一键房间号（公共信令牵线）；'manual' = 连接码（零服务器） */
+  GW.UI.prototype._mkP2P = function (role, transport) {
     var self = this;
     this._p2pRole = role;
+    this._mpTransport = (transport === 'manual') ? 'manual' : 'cloud';
     this.isP2PHost = (role === 'host');
-    if (GW.p2pSupported && !GW.p2pSupported()) {
+    if (!GW.p2pSupported || !GW.p2pSupported()) {
       this._lobbyStatus('当前页面无法联机：浏览器需要支持 WebRTC，且页面须为 <b>https</b> 或 <b>localhost</b>。' +
         '请通过线上网址打开，或换 Chrome / Edge 等现代浏览器。', 'error');
+      return null;
+    }
+    if (this._mpTransport === 'cloud' && GW.p2pCloudSupported && !GW.p2pCloudSupported()) {
+      this._lobbyStatus('当前浏览器不支持 WebSocket，「一键房间号」用不了。' +
+        '请改用下方的 <b>「连接码」</b> 直连（不需要 WebSocket，也不需要任何服务器）。', 'error');
       return null;
     }
     var r = this._mpRoster();
     var p = new GW.P2P({
       role: role,
+      transport: this._mpTransport,
       roster: { teams: r.teams, perTeam: r.perTeam, count: r.count },
       onStatus: function (text, kind) { self._lobbyStatus(text, kind); }
     });
@@ -1889,32 +1979,67 @@
     return p;
   };
 
-  /** 房主：创建房间 → 显示房间号 + 邀请链接 + 玩家列表 */
-  GW.UI.prototype._mkRoomP2P = function (role) {
+  /** 房主：创建房间 → 显示房间号 + 邀请链接 + 玩家列表；（连接码模式则显示邀请码） */
+  GW.UI.prototype._mkRoomP2P = function (role, transport) {
     var self = this;
-    var p = this._mkP2P(role);
+    var p = this._mkP2P(role, transport);
     if (!p) return null;
-    p.on('room', function (m) {
-      var num = m.code;
-      $('p2p-room-no').classList.remove('hidden');
-      $('p2p-seats').classList.remove('hidden');
-      var numEl = $('p2p-room-num');
-      if (numEl && numEl.value != null) numEl.value = num;
-      else if (numEl) numEl.textContent = num;
-      var link = self._buildInviteLink(num);
-      $('p2p-link-row').classList.remove('hidden');
-      $('p2p-room-link').value = link;
-      self._renderSeats({ joined: 1, count: p.roster.count, seats: [] });
-      self._lobbyStatus('房间已创建！把<b>邀请链接</b>发给朋友（他点开直接进房间），' +
-        '或把<b>房间号 ' + escapeHtml(num) + '</b> 发给他自己输。', 'ok');
-      copyText(link, $('p2p-room-link'), function () {
-        self._lobbyStatus('房间已创建！<b>邀请链接已自动复制</b>，直接粘贴发给朋友即可（房间号 <b>' +
-          escapeHtml(num) + '</b> 也显示在左侧备用）。', 'ok');
-      }, function () {
-        self._lobbyStatus('房间已创建！房间号 <b>' + escapeHtml(num) + '</b>——点「复制邀请链接」发给朋友；' +
-          '若复制没反应，长按号码框手动复制。', 'ok');
+    var manual = (this._mpTransport === 'manual');
+
+    /* 无论哪条通道，拿到「可分享凭据」或出错后都要把按钮解锁 */
+    if (manual) {
+      p.on('offer_code', function (m) {
+        $('code-offer').value = m.code;
+        $('code-answer-in').value = '';
+        self._lobbyBusy(false);
+        $('p2p-seats').classList.remove('hidden');
+        self._renderSeats({ joined: 1, count: p.roster.count, seats: [] });
+        self._lobbyStatus('邀请码已生成 —— 点 <b>「复制邀请码」</b> 发给朋友，' +
+          '等他回发「应答码」粘到下面，再点「完成连接」。', 'ok');
       });
-    });
+      p.on('answer_code', function (m) {
+        $('code-answer').value = m.code;
+        self._lobbyBusy(false);
+        self._lobbyStatus('应答码已生成 —— 点 <b>「复制应答码」</b> 发回给房主，他一点连接你们就通了。', 'ok');
+      });
+      p.on('ready', function () { self._lobbyBusy(false); });
+      p.on('open', function () {
+        self._lobbyBusy(false);
+        self._lobbyStatus('直连成功！等待房主开始对局…', 'ok');
+      });
+    } else {
+      /* 房间号是同步给出的：点下去马上就能看到号码，绝不「点了没反应」 */
+      p.on('room', function (m) {
+        var num = m.code;
+        var numEl = $('p2p-room-num');
+        if (numEl && numEl.value != null) numEl.value = num;
+        else if (numEl) numEl.textContent = num;
+        var link = self._buildInviteLink(num);
+        $('p2p-room-no').classList.remove('hidden');
+        $('p2p-seats').classList.remove('hidden');
+        $('p2p-link-row').classList.remove('hidden');
+        $('p2p-room-link').value = link;
+        self._renderSeats({ joined: 1, count: p.roster.count, seats: [] });
+        self._lobbyStatus('房间号 <b>' + escapeHtml(num) + '</b> 已生成，正在连接信令服务器…', 'info');
+        /* 此刻还在用户点击的手势里，复制成功率最高 */
+        copyText(link, $('p2p-room-link'), function () { self._linkCopied = true; },
+          function () { self._linkCopied = false; });
+      });
+      p.on('ready', function () {
+        self._lobbyBusy(false);
+        if (!self.isP2PHost) {
+          self._lobbyStatus('已通知房主，正在建立点对点直连…', 'info');
+          return;
+        }
+        var num = (self.net && self.net.code) || '';
+        self._lobbyStatus('房间 <b>' + escapeHtml(num) + '</b> 已就绪！' +
+          (self._linkCopied ? '<b>邀请链接已自动复制</b>，直接粘贴发给朋友即可。'
+            : '点「📋 复制邀请链接」发给朋友。') +
+          '（他点开直接进房间，或把房间号发给他自己输）', 'ok');
+      });
+    }
+    p.on('error', function () { self._lobbyBusy(false); });
+    p.on('joined', function () { self._lobbyBusy(false); });
     return p;
   };
 
@@ -2128,7 +2253,7 @@
   };
 
   GW.UI.prototype.enterLobby = function () {
-    if (this.net) { try { this.net.quit(); } catch (e) { /* 忽略 */ } this.net = null; }
+    this._resetNet();
     this.isRemote = false;
     this.myTeam = 0;
     this.isHost = false;
@@ -2141,6 +2266,7 @@
     $('p2p-room-no').classList.add('hidden');
     $('p2p-seats').classList.add('hidden');
     if ($('p2p-link-row')) $('p2p-link-row').classList.add('hidden');
+    this._clearCodeFields();
     var roomNumEl = $('p2p-room-num');
     if (roomNumEl && roomNumEl.value != null) roomNumEl.value = '······';
     $('p2p-room-input').value = '';
@@ -2160,8 +2286,20 @@
     } catch (e) { /* 解析失败不影响手动操作 */ }
   };
 
+  /** 清空「连接码」兜底通道的四个文本框（进出大厅时用） */
+  GW.UI.prototype._clearCodeFields = function () {
+    ['code-offer', 'code-answer-in', 'code-offer-in', 'code-answer'].forEach(function (id) {
+      var el = $(id);
+      if (el) el.value = '';
+    });
+    var det = $('p2p-code-details');
+    if (det) det.open = false;
+  };
+
   GW.UI.prototype._leaveLobby = function () {
-    if (this.net) { try { this.net.quit(); } catch (e) { /* 忽略 */ } this.net = null; }
+    this._resetNet();
+    this._clearCodeFields();
+    this._lobbyBusy(false);
     this.isRemote = false;
     this.myTeam = 0;
     this.botTeam = -1;
@@ -2177,10 +2315,12 @@
   /** 把联机事件接到 UI（每次新建连接时调用一次） */
   GW.UI.prototype._setupNet = function (net) {
     var self = this;
-    net.on('error', function (m) { self._lobbyStatus('联机出错：' + escapeHtml(m.msg || '未知'), 'error'); });
+    /* p2p 层出错时已经用 _lobbyStatus 报过一次了，这里只负责解锁按钮 */
+    net.on('error', function () { self._lobbyBusy(false); });
 
     /* 第一条数据通道打通 */
     net.on('open', function () {
+      self._lobbyBusy(false);
       self._lobbyStatus(self.isP2PHost ? '有朋友连上了，等待开局…' : '已连上房主，等待房主开局…', 'ok');
     });
 
@@ -2199,6 +2339,7 @@
 
     net.on('joined', function (m) {
       self.myTeam = m.team;
+      self._lobbyBusy(false);
       self._lobbyStatus('已加入房间，你是 <b>' + self._teamName(m.team) + '</b>。等待房主开始…', 'ok');
     });
     net.on('chat', function (m) { self._onRemoteChat(m); });
