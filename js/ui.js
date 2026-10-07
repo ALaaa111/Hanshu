@@ -1291,7 +1291,7 @@
         $('expr-status').className = 'expr-status error';
         return;
       }
-      /* 本地先校验表达式，给出即时反馈；真正开炮由服务器权威执行 */
+      /* 本地先校验表达式，给出即时反馈；真正开炮由房主（权威端）执行 */
       try { GW.compileString(raw); } catch (e) {
         $('expr-status').textContent = '✗ ' + e.message;
         $('expr-status').className = 'expr-status error';
@@ -1730,7 +1730,8 @@
 
   /* ============================================================
    * 联机（多人）对战
-   * 架构：服务器权威。客户端只发送「开炮意图」，并播放服务器下发的弹道动画。
+   * 架构：房主权威（点对点直连）。客人只发送「行动意图」，
+   *       由房主在自己的对局里执行，再把结果广播回所有客人。
    * ============================================================ */
 
   GW.UI.prototype._teamName = function (team) {
@@ -1759,16 +1760,9 @@
   /** 兼容旧接口：只取总人数 */
   GW.UI.prototype._mpPlayers = function () { return this._mpRoster().count; };
 
-  GW.UI.prototype._mpUrl = function () {
-    var v = $('mp-url').value.trim();
-    if (!v) v = 'ws://' + (loc().host || 'localhost:8080');
-    if (v.indexOf('://') < 0) v = 'ws://' + v;
-    return v;
-  };
-
   /** 房主创建房间后，生成一条「朋友点开直接进」的邀请链接（自带房间号） */
   GW.UI.prototype._buildInviteLink = function (num) {
-    /* 信令走 PeerJS 公共云（全局可用），链接只需带房间号即可，玩家零配置 */
+    /* 信令走公共信令云（全局可用），链接只需带房间号即可，玩家零配置 */
     return location.origin + location.pathname + '?room=' + encodeURIComponent(num);
   };
 
@@ -1793,53 +1787,23 @@
     });
     this._bindSeg('seg-mp-perteam', function () { self._syncMpRoster(); });
 
-    $('btn-mp-create').onclick = function () {
-      var url = self._mpUrl();
-      var fillAI = $('chk-mp-fillai') && $('chk-mp-fillai').checked;
-      self.net = new GW.Net(url);
-      self._setupNet(self.net);
-      self.net.whenOpen(function () {
-        var r = self._mpRoster();
-      self.net.create({
-        mode: self._mpMode(),
-        soldiers: r.count > 2 ? 1 : self._mpSoldiers(),
-        teams: r.teams,
-        perTeam: r.perTeam,
-        playerCount: r.count,
-        turnTime: self.mpTurnTime,
-        fillAI: !!fillAI
-      });
-      });
-      self._lobbyStatus('正在连接服务器 <b>' + escapeHtml(url) + '</b> …' +
-        (fillAI ? ' 已勾选「人机补齐」，将直接以 AI 为对手开局。' : ''), 'info');
-    };
-
     $('btn-mp-tutorial').onclick = function () { self.tutorial.start('online'); };
-
-    $('btn-mp-join').onclick = function () {
-      var code = $('mp-code').value.trim().toUpperCase();
-      if (!code) { self._lobbyStatus('请输入对方发来的房间号。', 'error'); return; }
-      var url = self._mpUrl();
-      self.net = new GW.Net(url);
-      self._setupNet(self.net);
-      self.net.whenOpen(function () { self.net.join(code); });
-      self._lobbyStatus('正在连接服务器 <b>' + escapeHtml(url) + '</b> 并加入 ' + code + ' …', 'info');
-    };
 
     $('btn-mp-back').onclick = function () { self._leaveLobby(); };
 
     /* ---------------- 房间联机（房主浏览器即权威端，数据点对点直连） ---------------- */
 
-    /* 房间模式：房主创建房间（PeerJS 公共云信令注册房间号）→ 朋友输房间号加入，数据走 WebRTC 直连 */
+    /* 房主：创建房间（向公共信令云登记房间号）→ 朋友输房间号加入，数据走 WebRTC 直连 */
     $('btn-room-create').onclick = function () {
-      var p = self._mkRoomTunnel('host');
+      var p = self._mkRoomP2P('host');
       if (!p) return;
       self.net = p;
       p.hostRoom();
     };
     $('btn-room-join').onclick = function () {
       var num = $('p2p-room-input').value.trim();
-      var p = self._mkRoomTunnel('guest');
+      if (!num) { self._lobbyStatus('请先输入房主发来的房间号。', 'error'); return; }
+      var p = self._mkRoomP2P('guest');
       if (!p) return;
       self.net = p;
       p.joinRoom(num);
@@ -1866,11 +1830,14 @@
     };
     /* 手动复制连接码（旧方案）已移除：联机房间自动生成邀请链接，房主只需发链接 */
 
-    $('btn-mp-copy').onclick = function () {
-      var code = self.net && self.net.room;
-      if (code && navigator.clipboard) {
-        try { navigator.clipboard.writeText(code); self._lobbyStatus('房号 <b>' + code + '</b> 已复制，发给对手即可。', 'ok'); } catch (e) { /* 忽略 */ }
+    /* 房主：手动开始对战（人没齐也能开，按已到人数开局） */
+    $('btn-room-start').onclick = function () {
+      if (!self.isP2PHost || !self.net) return;
+      if (!self.net.peerSeats().length) {
+        self._lobbyStatus('还没有朋友加入，先把邀请链接发出去吧。', 'error');
+        return;
       }
+      self._p2pHostStart();
     };
   };
 
@@ -1882,124 +1849,179 @@
     });
   };
 
-  /** 赛制说明：邀请链接联机一次只连一条直连通道，固定 2 人（1v1） */
+  /** 赛制说明：队伍总数 × 每队人数 = 总人数；联机为点对点直连，支持 2~8 人 */
   GW.UI.prototype._syncMpRoster = function () {
     var note = $('mp-roster-note');
     if (!note) return;
     var r = this._mpRoster();
-    if (r.count > 2) {
-      this._switchSegValue('seg-mp-teams', '2');
-      this._switchSegValue('seg-mp-perteam', '1');
-      r = this._mpRoster();
-      note.innerHTML = '<b>房间联机是 1v1</b>（2 队 × 1 人）。多人组队需要自建联机服务器（进阶）。';
-      return;
-    }
-    document.querySelectorAll('#seg-mp-teams .seg-item').forEach(function (b) {
-      b.classList.toggle('disabled', parseInt(b.getAttribute('data-value'), 10) > 2);
-    });
-    document.querySelectorAll('#seg-mp-perteam .seg-item').forEach(function (b) {
-      b.classList.toggle('disabled', parseInt(b.getAttribute('data-value'), 10) > 1);
-    });
     note.innerHTML = '当前：<b>' + r.teams + ' 队 × ' + r.perTeam + ' 人 = 共 ' + r.count + ' 人</b>（' +
-      GW.teamLabel(r.teams, r.perTeam) + '），' +
-      (r.count > 2 ? '每人只指挥 1 名士兵，打光某一整队即该队判负。' : '每人可带 ' + this._mpSoldiers() + ' 名士兵。');
+      GW.teamLabel(r.teams, r.perTeam) + '）——' +
+      (r.count > 2 ? '每人指挥 1 名士兵，打光某一整队即该队判负。' : '每人可带 ' + this._mpSoldiers() + ' 名士兵。');
+    var sg = $('group-mp-soldiers');
+    if (sg) sg.classList.toggle('hidden', r.count > 2);
   };
 
-  /* ---------------- 联机房间（房主即权威端，PeerJS 公共云信令牵线，零服务器） ---------------- */
+  /* ---------------- 联机（纯 P2P：房主浏览器即权威端，公共信令牵线，零服务器） ---------------- */
   GW.UI.prototype._setLinkMode = function () {
     this._mpLink = 'room';
     this._syncMpRoster();
     $('p2p-box').classList.remove('hidden');
-    if ($('mp-url-row')) $('mp-url-row').classList.add('hidden');
-    if ($('lobby-cols')) $('lobby-cols').classList.add('hidden');
-    if ($('relay-url-row')) $('relay-url-row').classList.add('hidden');
-    if ($('mp-share')) $('mp-share').classList.add('hidden');
-    this._lobbyStatus('联机：房主点「🏠 创建房间」→ 把<b>邀请链接</b>发给朋友 → 朋友点开链接<b>直接进房间、自动开局</b>。不用记房间号，也不用开任何服务器。', 'info');
+    this._lobbyStatus('联机（点对点直连）：房主点「🏠 创建房间」→ 把<b>邀请链接</b>发给朋友 → 朋友点开链接<b>直接进房间、自动开局</b>。数据在你们设备之间直连，不用开任何服务器。', 'info');
   };
 
-  /** 联机房间（房主浏览器权威 + PeerJS 公共云信令牵线，零服务器）：房主 / 客人通用工厂 */
-  GW.UI.prototype._mkTunnel = function (role, extra) {
+  /** 联机（纯 P2P，星型拓扑：客人只连房主）：房主 / 客人通用工厂 */
+  GW.UI.prototype._mkP2P = function (role) {
     var self = this;
     this._p2pRole = role;
-    if (GW.roomSupported && !GW.roomSupported()) {
-      this._lobbyStatus('当前页面无法联机：浏览器需要 https 或 localhost，并支持 WebRTC。请通过线上网址（https）打开，或换 Chrome / Edge 等现代浏览器。', 'error');
+    this.isP2PHost = (role === 'host');
+    if (GW.p2pSupported && !GW.p2pSupported()) {
+      this._lobbyStatus('当前页面无法联机：浏览器需要支持 WebRTC，且页面须为 <b>https</b> 或 <b>localhost</b>。' +
+        '请通过线上网址打开，或换 Chrome / Edge 等现代浏览器。', 'error');
       return null;
     }
-    var opts = {
+    var r = this._mpRoster();
+    var p = new GW.P2P({
       role: role,
-      onStatus: function (text, kind) { self._lobbyStatus(text, kind); },
-      onOpen: function () { self._onTunnelOpen(role); }
-    };
-    if (extra && extra.onRoom) opts.onRoom = extra.onRoom;
-    var t = new GW.Room(opts);
-    this._setupNet(t);
-    return t;
-  };
-
-  /** 房间号模式：房主创建房间拿到 6 位房间号；客人输号加入 */
-  GW.UI.prototype._mkRoomTunnel = function (role) {
-    var self = this;
-    return this._mkTunnel(role, {
-      onRoom: function (num) {
-        $('p2p-room-no').classList.remove('hidden');
-        var numEl = $('p2p-room-num');
-        if (numEl && numEl.value != null) numEl.value = num;
-        else if (numEl) numEl.textContent = num;
-        var link = self._buildInviteLink(num);
-        $('p2p-link-row').classList.remove('hidden');
-        $('p2p-room-link').value = link;
-        /* 房间号先大大地显示出来（不依赖复制）；然后再尽量自动把邀请链接复制进剪贴板 */
-        self._lobbyStatus('房间已创建！房间号 <b>' + escapeHtml(num) + '</b> 已显示在左侧——' +
-          '把「邀请链接」发给朋友（他点开直接进房间），或者把「房间号」发给朋友、让他自己输。', 'ok');
-        copyText(link, $('p2p-room-link'), function () {
-          self._lobbyStatus('房间已创建！邀请链接已自动复制，直接粘贴发给朋友即可；' +
-            '房间号 <b>' + escapeHtml(num) + '</b> 也已显示在左侧备用。', 'ok');
-        }, function () {
-          self._lobbyStatus('房间已创建！房间号 <b>' + escapeHtml(num) + '</b>，' +
-            '点「复制邀请链接」或「复制房间号」发给朋友（若复制没反应，长按号码框手动复制）。', 'ok');
-        });
-      }
+      roster: { teams: r.teams, perTeam: r.perTeam, count: r.count },
+      onStatus: function (text, kind) { self._lobbyStatus(text, kind); }
     });
+    this._setupNet(p);
+    return p;
   };
 
-  GW.UI.prototype._onTunnelOpen = function (role) {
-    if (role === 'host') {
-      this._lobbyStatus('连接已建立，正在生成战场…', 'ok');
-      this._p2pHostStart();
-    } else {
-      this._lobbyStatus('连接已建立，等待房主开局…', 'ok');
+  /** 房主：创建房间 → 显示房间号 + 邀请链接 + 玩家列表 */
+  GW.UI.prototype._mkRoomP2P = function (role) {
+    var self = this;
+    var p = this._mkP2P(role);
+    if (!p) return null;
+    p.on('room', function (m) {
+      var num = m.code;
+      $('p2p-room-no').classList.remove('hidden');
+      $('p2p-seats').classList.remove('hidden');
+      var numEl = $('p2p-room-num');
+      if (numEl && numEl.value != null) numEl.value = num;
+      else if (numEl) numEl.textContent = num;
+      var link = self._buildInviteLink(num);
+      $('p2p-link-row').classList.remove('hidden');
+      $('p2p-room-link').value = link;
+      self._renderSeats({ joined: 1, count: p.roster.count, seats: [] });
+      self._lobbyStatus('房间已创建！把<b>邀请链接</b>发给朋友（他点开直接进房间），' +
+        '或把<b>房间号 ' + escapeHtml(num) + '</b> 发给他自己输。', 'ok');
+      copyText(link, $('p2p-room-link'), function () {
+        self._lobbyStatus('房间已创建！<b>邀请链接已自动复制</b>，直接粘贴发给朋友即可（房间号 <b>' +
+          escapeHtml(num) + '</b> 也显示在左侧备用）。', 'ok');
+      }, function () {
+        self._lobbyStatus('房间已创建！房间号 <b>' + escapeHtml(num) + '</b>——点「复制邀请链接」发给朋友；' +
+          '若复制没反应，长按号码框手动复制。', 'ok');
+      });
+    });
+    return p;
+  };
+
+  /** 联机教程专用：预览房主侧的三块面板（房间号 / 邀请链接 / 玩家列表）。
+   *  教程里需要高亮这些元素，但它们平时要等创建房间后才出现，于是先摆一份示例内容。
+   *  on=false 时收回，还原成「未创建房间」的初始状态。 */
+  GW.UI.prototype._previewHostPanels = function (on) {
+    var ids = ['p2p-room-no', 'p2p-link-row', 'p2p-seats'];
+    if (!on) {
+      /* 只收回「本方法自己打开过」的面板，别去动真实房间的显示状态 */
+      if (!this._tutPreviewOn) return;
+      this._tutPreviewOn = false;
+      ids.forEach(function (id) { var el = $(id); if (el) el.classList.add('hidden'); });
+      return;
     }
+    /* 已经创建了真房间：面板上是真实内容，教程不要覆盖 */
+    if (this.net && this.net.room) return;
+    this._tutPreviewOn = true;
+
+    var numEl = $('p2p-room-num');
+    if (numEl && numEl.value != null) numEl.value = 'K7P2Q';
+    var linkEl = $('p2p-room-link');
+    if (linkEl) linkEl.value = location.origin + location.pathname + '?room=K7P2Q';
+    ids.forEach(function (id) { var el = $(id); if (el) el.classList.remove('hidden'); });
+
+    var r = this._mpRoster();
+    var box = $('p2p-seats-list');
+    if (box) {
+      box.innerHTML =
+        '<li><span class="seat-dot"></span><span class="seat-me">我（房主 · ' +
+          escapeHtml(GW.seatName(r.teams, 0)) + '）</span></li>' +
+        '<li><span class="seat-dot"></span>' + escapeHtml(GW.seatName(r.teams, 1)) + '（朋友）</li>';
+    }
+    var cnt = $('p2p-seats-count');
+    if (cnt) cnt.textContent = '2/' + r.count;
+    var startBtn = $('btn-room-start');
+    if (startBtn) startBtn.classList.remove('hidden');
   };
 
-  /** 房主端开局：本地生成战场 → 把同一份地图发给客人 → 本机作为权威端开打 */
+  /** 渲染「房间里已有几人」的座位列表（房主侧） */
+  GW.UI.prototype._renderSeats = function (state) {
+    var box = $('p2p-seats-list');
+    if (!box) return;
+    var teams = (this.net && this.net.roster && this.net.roster.teams) || 2;
+    var cnt = $('p2p-seats-count');
+    if (cnt) cnt.textContent = state.joined + '/' + state.count;
+    var html = '<li><span class="seat-dot"></span><span class="seat-me">我（房主 · ' +
+      escapeHtml(GW.seatName(teams, 0)) + '）</span></li>';
+    var seats = (state.seats || []).slice().sort(function (a, b) { return a.seat - b.seat; });
+    for (var i = 0; i < seats.length; i++) {
+      html += '<li><span class="seat-dot"></span>' + escapeHtml(GW.seatName(teams, seats[i].seat)) +
+        (seats[i].name ? '（' + escapeHtml(seats[i].name) + '）' : '') + '</li>';
+    }
+    for (var k = state.joined; k < state.count; k++) {
+      html += '<li><span class="seat-dot" style="background:#c9d6cf"></span>' +
+        '<span class="seat-wait">等待玩家加入…</span></li>';
+    }
+    box.innerHTML = html;
+    var startBtn = $('btn-room-start');
+    if (startBtn) startBtn.classList.toggle('hidden', state.joined < 2);
+  };
+
+  /** 房主端开局：本地生成战场 → 按席位把同一份地图下发给每位客人 → 本机作为权威端开打 */
   GW.UI.prototype._p2pHostStart = function () {
+    if (this._p2pStartFired) return;
+    if (!this.net) return;
+    var seats = this.net.peerSeats();
+    if (!seats.length) { this._lobbyStatus('还没有朋友加入，先把邀请链接发出去吧。', 'error'); return; }
+    this._p2pStartFired = true;
+
     var mode = this._mpMode(), soldiers = this._mpSoldiers();
-    /* 房间联机最多 2 人（房主 + 1 位客人） */
-    var roster = this._mpRoster();
-    if (roster.count > 2) {
-      this._switchSegValue('seg-mp-teams', '2');
-      this._switchSegValue('seg-mp-perteam', '1');
-      roster = this._mpRoster();
-      this._lobbyStatus('房间联机只支持 1v1（2 队 × 1 人），已自动改为 2 人开打。', 'info');
-    }
-    var n = roster.count;
-    var battle = n > 2
-      ? GW.generateBattle(soldiers, n, roster.teams, roster.perTeam)
-      : GW.generateBattle(soldiers);
+    /* 按「实际到齐的人数」开局：人没齐时也允许提前开打，此时按人数反推赛制 */
+    var n = seats.length + 1;
+    var roster = (n === 2) ? this.net.roster : GW.rosterFromSeats(n);
+    if (n > 2) soldiers = 1;
+
+    var battle = GW.generateBattle(soldiers, n, roster.teams, roster.perTeam);
     var currentTurn = GW.randInt(n);
-    var base = {
-      type: 'start',
-      config: { mode: mode, soldiers: soldiers, playerCount: n, teams: roster.teams, perTeam: roster.perTeam, turnTime: this.mpTurnTime },
-      terrain: { circles: battle.circles, positions: battle.positions },
-      currentTurn: currentTurn,
-      botTeam: -1
+    var config = {
+      mode: mode, soldiers: soldiers, playerCount: n,
+      teams: roster.teams, perTeam: roster.perTeam,
+      turnTime: this.mpTurnTime
     };
-    this.net.send({ type: 'start', config: base.config, terrain: base.terrain, currentTurn: currentTurn, botTeam: -1, team: 1 });
-    this.enterRemoteGame({ type: 'start', config: base.config, terrain: base.terrain, currentTurn: currentTurn, botTeam: -1, team: 0 },
-      { authoritative: true });
+    var terrain = { circles: battle.circles, positions: battle.positions };
+
+    /* 逐个给客人下发「你的席位是几号」的同一份开局 */
+    for (var i = 0; i < seats.length; i++) {
+      this.net.sendTo(seats[i], {
+        type: 'start', config: config, terrain: terrain,
+        currentTurn: currentTurn, botTeam: -1, team: seats[i]
+      });
+    }
+    this.enterRemoteGame({
+      type: 'start', config: config, terrain: terrain,
+      currentTurn: currentTurn, botTeam: -1, team: 0
+    }, { authoritative: true });
   };
 
-  /** 房主是权威端：把自己的对局事件原样广播给客人（与 server.js 的广播内容一致） */
+  /** 把「未生效」只回给发起的那位玩家（房主专用） */
+  GW.UI.prototype._netNack = function (m, msg) {
+    if (!this.net) return;
+    var payload = { type: 'fire_error', msg: msg };
+    if (m && typeof m.seat === 'number' && this.net.sendTo) this.net.sendTo(m.seat, payload);
+    else this.net.send(payload);
+  };
+
+  /** 房主是权威端：把自己的对局事件原样广播给客人（客人镜像据此重演同一局） */
   GW.UI.prototype._attachHostBroadcast = function () {
     var self = this;
     this.game.on(function (type, data) {
@@ -2015,6 +2037,9 @@
         self.net.send({ type: 'move', round: self.game.round, playerIndex: data.playerIndex, soldierIndex: data.soldierIndex, fx: data.fx, fy: data.fy, tx: data.tx, ty: data.ty });
       } else if (type === 'skill') {
         self.net.send({ type: 'skill_used', playerIndex: data.playerIndex, skill: data.skill });
+      } else if (type === 'skills') {
+        /* 全员技能名单变化（开局选技 / 拾取技能）：同步给所有客人 */
+        self.net.send({ type: 'skills', players: data.players });
       } else if (type === 'reward') {
         self.net.send({ type: 'reward', playerIndex: data.playerIndex, kind: data.kind, x: data.x, y: data.y, pack: self._packOf(data) });
       } else if (type === 'pack') {
@@ -2036,70 +2061,70 @@
     return null;
   };
 
-  /** 房主端代客人执行开炮（校验与 server.js 的 applyFire 完全一致） */
+  /** 房主端代客人执行开炮（权威端校验：必须是该席位自己的回合） */
   GW.UI.prototype._hostApplyFire = function (m) {
     var g = this.game;
-    if (!g) { this.net.send({ type: 'fire_error', msg: '对局尚未开始' }); return; }
-    if (g.state !== 'aim') { this.net.send({ type: 'fire_error', msg: '炮弹还在飞，请稍候' }); return; }
-    if (g.currentTurn !== 1) { this.net.send({ type: 'fire_error', msg: '还没轮到你' }); return; }
+    if (!g) { this._netNack(m, '对局尚未开始'); return; }
+    if (g.state !== 'aim') { this._netNack(m, '炮弹还在飞，请稍候'); return; }
+    if (g.currentTurn !== m.seat) { this._netNack(m, '还没轮到你'); return; }
     if (g.mode === C.SND_ODE) g.setAngle(m.angle || 0);
     var res = g.fire(m.expr, false, m.weapon);
-    if (!res.ok) this.net.send({ type: 'fire_error', msg: res.reason });
+    if (!res.ok) this._netNack(m, res.reason);
   };
 
-  /** 房主端代客人执行手绘弹道（校验与 server.js 的 applySketch 完全一致） */
+  /** 房主端代客人执行手绘弹道 */
   GW.UI.prototype._hostApplySketch = function (m) {
     var g = this.game;
-    if (!g) { this.net.send({ type: 'fire_error', msg: '对局尚未开始' }); return; }
-    if (g.state !== 'aim') { this.net.send({ type: 'fire_error', msg: '炮弹还在飞，请稍候' }); return; }
-    if (g.currentTurn !== 1) { this.net.send({ type: 'fire_error', msg: '还没轮到你' }); return; }
-    if (!m.norm || !m.norm.length) { this.net.send({ type: 'fire_error', msg: '请先在画板上拖出一笔' }); return; }
+    if (!g) { this._netNack(m, '对局尚未开始'); return; }
+    if (g.state !== 'aim') { this._netNack(m, '炮弹还在飞，请稍候'); return; }
+    if (g.currentTurn !== m.seat) { this._netNack(m, '还没轮到你'); return; }
+    if (!m.norm || !m.norm.length) { this._netNack(m, '请先在画板上拖出一笔'); return; }
     var traj = g.buildSketchTrajectory(m.norm, m.rot || 0, m.scale == null ? 1 : m.scale);
     if (!traj || traj.numSteps < 2) {
-      this.net.send({ type: 'fire_error', msg: '这一笔无法形成有效弹道，请重画或调小尺寸' });
+      this._netNack(m, '这一笔无法形成有效弹道，请重画或调小尺寸');
       return;
     }
     var res = g.fireTrajectory(traj, traj.expr, C.FUNCTION_VELOCITY, m.weapon);
-    if (!res.ok) this.net.send({ type: 'fire_error', msg: res.reason });
+    if (!res.ok) this._netNack(m, res.reason);
   };
 
   /** 房主端代客人执行位移（写函数 / 手绘曲线两种） */
   GW.UI.prototype._hostApplyMove = function (m) {
     var g = this.game;
-    if (!g) { this.net.send({ type: 'fire_error', msg: '对局尚未开始' }); return; }
-    if (g.state !== 'aim') { this.net.send({ type: 'fire_error', msg: '请等当前行动结束' }); return; }
-    if (g.currentTurn !== 1) { this.net.send({ type: 'fire_error', msg: '还没轮到你' }); return; }
+    if (!g) { this._netNack(m, '对局尚未开始'); return; }
+    if (g.state !== 'aim') { this._netNack(m, '请等当前行动结束'); return; }
+    if (g.currentTurn !== m.seat) { this._netNack(m, '还没轮到你'); return; }
     var res;
     if (m.norm && m.norm.length) {
       var traj = g.buildSketchTrajectory(m.norm, m.rot || 0, m.scale == null ? 1 : m.scale);
-      if (!traj || traj.numSteps < 2) { this.net.send({ type: 'fire_error', msg: '这一笔无法作为位移路径' }); return; }
-      var saved = this.action;
+      if (!traj || traj.numSteps < 2) { this._netNack(m, '这一笔无法作为位移路径'); return; }
+      var savedAction = this.action;
       this.action = 'move';
       res = this._moveAlongTrajectory(traj, m.dist);
-      this.action = saved;
+      this.action = savedAction;
     } else {
       res = g.move(m.expr, m.dist, false);
     }
-    if (!res.ok) this.net.send({ type: 'fire_error', msg: res.reason });
+    if (!res.ok) this._netNack(m, res.reason);
   };
 
   /** 房主端代客人写技能（点对点：房主即权威端） */
   GW.UI.prototype._hostApplySkillPick = function (m) {
     var g = this.game;
-    if (!g) { this.net.send({ type: 'fire_error', msg: '对局尚未开始' }); return; }
+    if (!g) { this._netNack(m, '对局尚未开始'); return; }
     var seat = (typeof m.seat === 'number') ? m.seat : g.currentTurn;
     var res = g.pickSkill(seat, m.skill);
-    if (!res.ok) { this.net.send({ type: 'fire_error', msg: res.reason }); return; }
+    if (!res.ok) { this._netNack(m, res.reason); return; }
     g.emit('skills', { players: GW.snapshotPlayers(g).map(function (p) { return { skill: p.skill, skillUsed: p.skillUsed }; }) });
   };
 
   /** 房主端代客人使用技能 */
-  GW.UI.prototype._hostApplySkill = function () {
+  GW.UI.prototype._hostApplySkill = function (m) {
     var g = this.game;
-    if (!g || g.state !== 'aim') { this.net.send({ type: 'fire_error', msg: '请等当前行动结束' }); return; }
-    if (g.currentTurn !== this.myTeam) { this.net.send({ type: 'fire_error', msg: '还没轮到你' }); return; }
+    if (!g || g.state !== 'aim') { this._netNack(m, '请等当前行动结束'); return; }
+    if (typeof m.seat === 'number' && g.currentTurn !== m.seat) { this._netNack(m, '还没轮到你'); return; }
     var res = g.useSkill();
-    if (!res.ok) this.net.send({ type: 'fire_error', msg: res.reason });
+    if (!res.ok) this._netNack(m, res.reason);
   };
 
   GW.UI.prototype.enterLobby = function () {
@@ -2107,25 +2132,27 @@
     this.isRemote = false;
     this.myTeam = 0;
     this.isHost = false;
+    this.isP2PHost = false;
     this._p2pRole = null;
+    this._p2pStartFired = false;
+    this._roomJoinFired = false;
+    this._tutPreviewOn = false;
     this.showScreen('screen-lobby');
-    $('btn-mp-copy').style.display = 'none';
-    $('mp-share').classList.add('hidden');
     $('p2p-room-no').classList.add('hidden');
+    $('p2p-seats').classList.add('hidden');
     if ($('p2p-link-row')) $('p2p-link-row').classList.add('hidden');
     var roomNumEl = $('p2p-room-num');
     if (roomNumEl && roomNumEl.value != null) roomNumEl.value = '······';
     $('p2p-room-input').value = '';
-    this._setLinkMode();   // 联机房间模式（房主即权威端，零服务器）
+    this._setLinkMode();
     /* 若带邀请链接进来（?room=），自动进房，玩家零操作 */
     try {
       var params = new URLSearchParams(location.search);
       var roomParam = params.get('room');
       if (roomParam) {
-        this._setLinkMode();
         $('p2p-room-input').value = roomParam;
         this._lobbyStatus('检测到邀请链接，正在为你加入房间 <b>' + escapeHtml(roomParam) + '</b> …', 'info');
-        try { history.replaceState({}, '', location.pathname); } catch (e) {}  // 清掉参数，避免刷新重复触发
+        try { history.replaceState({}, '', location.pathname); } catch (e) { /* 忽略 */ }
         var joinBtn = $('btn-room-join');
         var self2 = this;
         setTimeout(function () { if (joinBtn && !self2._roomJoinFired) { self2._roomJoinFired = true; joinBtn.click(); } }, 700);
@@ -2139,30 +2166,42 @@
     this.myTeam = 0;
     this.botTeam = -1;
     this.isHost = false;
+    this.isP2PHost = false;
     this._p2pRole = null;
+    this._p2pStartFired = false;
     this._mirrorExpr = '';
     this.setQuickVisible(false);
     this.showScreen('screen-menu');
   };
 
-  /** 把服务器事件接到 UI（每次新建连接时调用一次） */
+  /** 把联机事件接到 UI（每次新建连接时调用一次） */
   GW.UI.prototype._setupNet = function (net) {
     var self = this;
-    net.on('error', function (m) { self._lobbyStatus('连接错误：' + escapeHtml(m.msg || '未知') + '。请确认房间号正确、网络可访问公网后重试。', 'error'); });
-    net.on('created', function (m) {
-      self.myTeam = m.team;
-      $('btn-mp-copy').style.display = 'inline-block';
-      self._lobbyStatus('房间已创建，房号 <b>' + m.code + '</b>（你是 ' + self._teamName(m.team) +
-        '）。把下方链接发给对手，他点开即可自动加入。', 'ok');
-      if (m.share) self._renderShare(m.share, m.code);
+    net.on('error', function (m) { self._lobbyStatus('联机出错：' + escapeHtml(m.msg || '未知'), 'error'); });
+
+    /* 第一条数据通道打通 */
+    net.on('open', function () {
+      self._lobbyStatus(self.isP2PHost ? '有朋友连上了，等待开局…' : '已连上房主，等待房主开局…', 'ok');
     });
-    net.on('share', function (m) { self._renderShare(m.share, self.net && self.net.room); });
-    net.on('chat', function (m) { self._onRemoteChat(m); });
+
+    /* 大厅人数变化（房主侧刷新玩家列表；人齐自动开局） */
+    net.on('lobby', function (st) {
+      if (!self.isP2PHost) {
+        self._lobbyStatus('房间内已有 <b>' + st.joined + '/' + st.count + '</b> 人，等待房主开局…', 'info');
+        return;
+      }
+      self._renderSeats(st);
+      if (st.joined >= st.count && !self._p2pStartFired) {
+        self._lobbyStatus('人数已到齐，正在生成战场…', 'ok');
+        self._p2pHostStart();
+      }
+    });
+
     net.on('joined', function (m) {
       self.myTeam = m.team;
-      self._lobbyStatus('已加入房间 <b>' + m.code + '</b>，你是 ' + self._teamName(m.team) + '。等待房主开始…', 'ok');
+      self._lobbyStatus('已加入房间，你是 <b>' + self._teamName(m.team) + '</b>。等待房主开始…', 'ok');
     });
-    net.on('wait', function (m) { self._lobbyStatus(m.msg || '等待对手加入…', 'info'); });
+    net.on('chat', function (m) { self._onRemoteChat(m); });
     net.on('start', function (m) { self.enterRemoteGame(m); });
     net.on('turn', function (m) { self._onRemoteTurn(m); });
     net.on('shot', function (m) { self._onRemoteShot(m); });
@@ -2174,9 +2213,16 @@
     net.on('over', function (m) { self._onRemoteOver(m); });
     net.on('fire_error', function (m) { self._onRemoteFireError(m); });
     net.on('opponent_left', function (m) { self._onOpponentLeft(m); });
-    net.on('bot_tookover', function (m) { self._onBotTookover(m); });
-    /* 只对点对点联机生效：房主端（权威端）会收到客人的行动意图 */
+    /* 客人掉线：对局中若所有人都走了就结束，否则只提示 */
+    net.on('peer_leave', function (m) {
+      if (!self.isRemote || !self.game) return;
+      var left = self.net && self.net.peerSeats ? self.net.peerSeats().length : 0;
+      if (!left) self._onOpponentLeft();
+      else self.toast(self._teamName(m && m.seat) + ' 已离开房间。', 'sys');
+    });
     net.on('close', function () { if (self.isRemote && self.game) self._onOpponentLeft(); });
+
+    /* 只有房主（权威端）会收到客人上报的行动意图 */
     net.on('fire', function (m) { if (self.isHost) self._hostApplyFire(m); });
     net.on('sketch', function (m) { if (self.isHost) self._hostApplySketch(m); });
     net.on('move_intent', function (m) { if (self.isHost) self._hostApplyMove(m); });
@@ -2184,6 +2230,7 @@
     net.on('skill_pick', function (m) { if (self.isHost) self._hostApplySkillPick(m); });
     net.on('rematch', function () {
       if (!self.isHost) return;
+      self._p2pStartFired = false;
       self._p2pHostStart();
       self.toast('已重开一局：新地图、同一条直连。', 'sys');
     });
@@ -2255,7 +2302,7 @@
 
   GW.UI.prototype._onRemoteTurn = function (m) {
     var g = this.game;
-    if (!g) return;
+    if (!g || !m || !m.players) return;
     for (var i = 0; i < m.players.length; i++) {
       var sp = m.players[i], pp = g.players[i];
       pp.currentSoldierIndex = sp.currentSoldierIndex;
@@ -2390,70 +2437,17 @@
     setTimeout(function () { self.quitToMenu(); }, 1800);
   };
 
-  /** 联机中对手掉线，服务器用 AI 顶替其阵地，对局继续 */
-  GW.UI.prototype._onBotTookover = function (m) {
-    this.botTeam = (typeof m.team === 'number') ? m.team : -1;
-    this.toast('对手掉线，AI 已接管 ' + this._teamName(m.team) + ' 阵地，对局继续。', 'sys');
-    this.refreshTeams();
-  };
-
   /** 对手发来快捷语 → 气泡提示（青色，区别于系统消息） */
   GW.UI.prototype._onRemoteChat = function (m) {
     var who = (typeof m.from === 'number') ? this._teamName(m.from) : '对手';
     this.toast(who + '：' + (m.text || ''), 'chat');
   };
 
-  /** 把服务器探测到的公网 / 局域网地址渲染成「一键分享链接」 */
-  GW.UI.prototype._renderShare = function (share, code) {
-    var box = $('mp-share');
-    if (!box || !share) return;
-    code = code || (this.net && this.net.room) || '';
-    var L = loc();
-    var port = share.port || (L.port ? parseInt(L.port, 10) : 80);
-    var hosts = [];
-    if (share.publicIp) hosts.push({ tag: '公网', host: share.publicIp });
-    var lans = share.lanIps || [];
-    if (lans.length) hosts.push({ tag: '局域网', host: lans[0] });
-    if (!hosts.length) hosts.push({ tag: '本机', host: L.hostname || 'localhost' });
-
-    var self = this;
-    var html = '<div class="share-title">朋友点开下面任意一条链接即可<b>自动加入本房间</b>' +
-      (share.publicIp ? '' : '（暂未探测到公网 IP，先给出局域网地址）') + '：</div>';
-    hosts.forEach(function (h) {
-      var url = 'http://' + h.host + (port && port !== 80 ? ':' + port : '') + '/' +
-        (code ? '?room=' + code : '');
-      html += '<div class="share-line"><span class="share-tag">' + h.tag + '</span>' +
-        '<code class="share-url">' + escapeHtml(url) + '</code>' +
-        '<button class="btn btn-mini share-copy" data-url="' + escapeHtml(url) + '">复制</button></div>';
-    });
-    box.innerHTML = html;
-    box.classList.remove('hidden');
-    Array.prototype.forEach.call(box.querySelectorAll('.share-copy'), function (btn) {
-      btn.onclick = function () {
-        var url = btn.getAttribute('data-url');
-        if (navigator.clipboard) {
-          try { navigator.clipboard.writeText(url); self._lobbyStatus('分享链接已复制：<b>' + escapeHtml(url) + '</b>', 'ok'); return; } catch (e) { /* 退化为提示 */ }
-        }
-        self._lobbyStatus('请手动复制分享链接：<b>' + escapeHtml(url) + '</b>', 'info');
-      };
-    });
-  };
-
-  /** 打开带 ?room=XXXX 的分享链接时，自动进入大厅并加入该房间 */
-  GW.UI.prototype.handleInvite = function () {
-    var m = /[?&]room=([A-Za-z0-9]{1,8})/.exec(loc().search || '');
-    if (!m) return;
-    var code = m[1].toUpperCase();
-    this.enterLobby();
-    $('mp-code').value = code;
-    this._lobbyStatus('检测到邀请房号 <b>' + code + '</b>，正在自动加入…', 'info');
-    setTimeout(function () { var b = $('btn-mp-join'); if (b) b.click(); }, 400);
-  };
-
-  /* 供页面 ready 后调用 */
+  /* 供页面启动后调用 */
   GW.boot = function () {
     GW.ui = new GW.UI();
-    GW.ui.handleInvite();
+    /* 带邀请链接（?room=XXXX）进来时，自动进大厅并加入房间 */
+    if (/[?&]room=/i.test(loc().search || '')) GW.ui.enterLobby();
   };
 
 })(typeof window !== 'undefined' ? window : globalThis);

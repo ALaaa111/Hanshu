@@ -1,7 +1,7 @@
 /* ============================================================
  * 中文新手教程：固定战场 + 分步引导 + 高亮 + 动手任务
  * 每一步都对应真实 UI 区域；动手步骤会自动「虚化」——不再压暗全屏、
- * 卡片自动缩窄并躲到不挡面板的位置，玩家点点 Dickens 直接操作即可。
+ * 卡片自动缩窄并躲到不挡面板的位置，玩家点一下就能直接操作。
  * ============================================================ */
 (function (root) {
   'use strict';
@@ -170,17 +170,20 @@
     {
       title: '联机对战怎么玩？',
       target: '#screen-lobby',
-      body: '<b>联机对战</b>让你和另一名玩家在同一张地图上隔空对炮，<b>全程零配置、不需要任何人开服务器</b>。' +
-        '<ul><li>房主的浏览器就是「权威端」：由它计算弹道，再同步给你的朋友，两边看到的是同一颗炮弹；</li>' +
-        '<li>两台设备之间是<b>点对点直连</b>（走 WebRTC），不需要第三方服务器，也没有账号、房间密码这些麻烦。</li></ul>' +
+      body: '<b>联机对战</b>让你和其他玩家在同一张地图上隔空对炮，<b>全程零配置、不需要任何人开服务器</b>。' +
+        '<ul><li>房主的浏览器就是「权威端」：由它计算弹道，再同步给所有客人，大家看到的是同一颗炮弹；</li>' +
+        '<li>客人之间、客人与房主之间都是<b>点对点直连</b>（走 WebRTC），不需要第三方服务器，也没有账号、房间密码这些麻烦；</li>' +
+        '<li>房主 + 最多 7 位客人，<b>共 2~8 人</b>都能同图对战。</li></ul>' +
         '下面几步带你过一遍大厅里的每个按钮。'
     },
     {
-      title: '选弹道模式与每方士兵',
-      target: ['#seg-mp-mode', '#seg-mp-soldiers'],
-      body: '先挑<b>弹道模式</b>（普通函数 / 一阶 / 二阶微分方程）和<b>每方士兵数</b>——' +
-        '同一间房里以<b>房主创建房间时</b>选的为准，后加入的人两侧一致。' +
-        '<div class="tut-task">房间联机是固定的 <b>1v1（2 队 × 1 人）</b>；想 3 人以上组队，见项目说明里的「自建联机服务器」。</div>'
+      title: '选弹道模式、赛制与每方士兵',
+      target: ['#seg-mp-mode', '#seg-mp-teams', '#seg-mp-soldiers'],
+      body: '房里以<b>房主创建房间时</b>选的为准，后加入的人自动一致：<ul>' +
+        '<li><b>弹道模式</b>：普通函数 / 一阶 / 二阶微分方程；</li>' +
+        '<li><b>赛制</b>：队伍总数（2 / 3 / 4 队）× 每队人数（1 / 2 / 3 / 4 人）= 总人数，<b>上限 8 人</b>；</li>' +
+        '<li><b>每方士兵</b>：只在 1v1（2 人）时生效，3 人及以上每人固定带 1 名士兵。</li></ul>' +
+        '<div class="tut-task">点「开始对战」时如果人还没到齐，会<b>按实际到齐人数</b>自动反推赛制，人少也能先开一局。</div>'
     },
     {
       title: '每回合时间',
@@ -191,7 +194,7 @@
     {
       title: '创建房间（房主）',
       target: '#btn-room-create',
-      body: '房主点 <b>「🏠 我是房主：创建房间」</b>：页面会立刻给出一个 <b>6 位房间号</b>，' +
+      body: '房主点 <b>「🏠 我是房主：创建房间」</b>：页面会立刻给出一个 <b>5 位房间号</b>，' +
         '并生成一条 <b>邀请链接</b>。' +
         '<div class="tut-task">把「邀请链接」发给朋友（他点开直接进房间），' +
         '或者把「房间号」发给他、让他自己输——两种都行，不用开任何服务器。</div>'
@@ -201,13 +204,21 @@
       target: '#btn-room-create',
       body: '房主创建房间后，左侧会出现两样东西：' +
         '<ul><li><b>大字房间号</b>：复制不了也没关系，点一下号码框全选、长按就能手动复制，或直接念给朋友；</li>' +
-        '<li><b>📋 复制邀请链接</b>：朋友点开这条网址，会自动进入大厅、自动加入你的房间、自动开局。</li></ul>'
+        '<li><b>📋 复制邀请链接</b>：朋友点开这条网址，会自动进入大厅、自动加入你的房间。</li></ul>'
+    },
+    {
+      title: '看看谁进来了 · 开始对战',
+      target: '#p2p-seats',
+      body: '每进来一位朋友，房主侧的<b>玩家列表</b>就多一行（座位名按赛制显示成「第 N 队 · M 号」）。' +
+        '<ul><li>人数<b>到齐会自动开局</b>；</li>' +
+        '<li>人没到齐也想打？只要<b>至少进来 1 位朋友</b>，就能点 <b>「▶ 开始对战」</b> 提前开打（按实际人数反推赛制）。</li></ul>' +
+        '<div class="tut-task">房主的浏览器是这一局的「裁判」——所有弹道都由它算，所以房主关掉页面 = 这一局结束。</div>'
     },
     {
       title: '加入房间（朋友）',
       target: ['#p2p-room-input', '#btn-room-join'],
-      body: '朋友这边不用点邀请链接也一样能进：在右边 <b>「我加入」</b> 输入框里填房主的 <b>6 位房间号</b>，' +
-        '点 <b>「加入房间」</b> 即可。连接建立后房主端会自动开局，两端同时开打。'
+      body: '朋友这边不用点邀请链接也一样能进：在右边 <b>「我加入」</b> 输入框里填房主的 <b>5 位房间号</b>，' +
+        '点 <b>「加入房间」</b> 即可（大小写、空格都无所谓，会自动规整）。'
     },
     {
       title: '对局内怎么打',
@@ -237,6 +248,8 @@
     document.getElementById('tut-min').textContent = '收起';
     if (online) {
       this.game = null;
+      /* 预览房主侧面板，让「房间号 / 邀请链接 / 玩家列表」三步都有东西可高亮 */
+      if (this.ui && this.ui._previewHostPanels) this.ui._previewHostPanels(true);
     } else if (arg !== false) {
       this.game = this.ui.startTutorialBattle();
     } else {
@@ -251,11 +264,13 @@
   };
 
   GW.Tutorial.prototype.stop = function (silent) {
+    var wasOnline = this.online;
     this.active = false;
     this.online = false;
     this._clearSpots();
     document.getElementById('tutorial-layer').classList.add('hidden');
-    if (!silent && !this.online && this.ui.onTutorialEnd) this.ui.onTutorialEnd();
+    if (wasOnline && this.ui && this.ui._previewHostPanels) this.ui._previewHostPanels(false);
+    if (!silent && !wasOnline && this.ui.onTutorialEnd) this.ui.onTutorialEnd();
   };
 
   /** 收起 / 展开卡片：任何时候都能把教程缩成一小条，让出操作区 */

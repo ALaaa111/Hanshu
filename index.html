@@ -27,7 +27,7 @@
         <button class="btn btn-ghost btn-lg" id="btn-menu-tutorial">新手教程</button>
         <button class="btn btn-ghost btn-lg" id="btn-menu-help">玩法说明</button>
       </div>
-      <p class="menu-foot">中文版 v3.2 · 纯前端运行，双击即玩；联机零配置：房主点「创建房间」生成邀请链接，朋友点开即玩</p>
+      <p class="menu-foot">中文版 v4.0 · 纯前端运行，双击即玩；联机为纯点对点（P2P）：房主点「创建房间」，把邀请链接发给朋友，他点开即玩</p>
     </div>
   </section>
 
@@ -138,7 +138,7 @@
       <h2 class="card-title">联机对战</h2>
 
       <div class="p2p-box" id="p2p-box">
-        <p class="field-hint">你和朋友<b>都不用懂任何技术、不用开任何东西</b>：房主点「创建房间」→ 把<b>邀请链接</b>发给朋友 → 朋友点开链接直接进房间、<b>自动开局</b>。不用记房间号，也不用填任何服务器地址。<br>（这种方式固定 <b>1v1（2 人）</b>；想 3 人以上组队请见项目说明里的「自建服务器联机」。）</p>
+        <p class="field-hint">你和朋友<b>都不用懂任何技术、不用开任何东西</b>：房主点「创建房间」→ 把<b>邀请链接</b>发给朋友 → 朋友点开链接直接进房间、<b>自动开局</b>。数据在你们的设备之间<b>点对点直连</b>，不经过任何服务器，支持 <b>2~8 人</b>。</p>
         <div class="field-group">
           <label class="field-label">弹道模式</label>
           <div class="seg" id="seg-mp-mode">
@@ -148,16 +148,7 @@
           </div>
         </div>
         <div class="field-group">
-          <label class="field-label">每方士兵</label>
-          <div class="seg" id="seg-mp-soldiers">
-            <button class="seg-item" data-value="1">1 名</button>
-            <button class="seg-item active" data-value="2">2 名</button>
-            <button class="seg-item" data-value="3">3 名</button>
-            <button class="seg-item" data-value="4">4 名</button>
-          </div>
-        </div>
-        <div class="field-group hidden" id="group-mp-roster">
-          <label class="field-label">多人赛制</label>
+          <label class="field-label">赛制（队伍总数 × 每队人数 = 总人数）</label>
           <div class="roster-row">
             <div class="field-group">
               <span class="field-label-sm">队伍总数</span>
@@ -178,6 +169,15 @@
             </div>
           </div>
           <div class="field-note" id="mp-roster-note"></div>
+        </div>
+        <div class="field-group" id="group-mp-soldiers">
+          <label class="field-label">每方士兵（1v1 时生效；3 人及以上每人 1 名）</label>
+          <div class="seg" id="seg-mp-soldiers">
+            <button class="seg-item" data-value="1">1 名</button>
+            <button class="seg-item active" data-value="2">2 名</button>
+            <button class="seg-item" data-value="3">3 名</button>
+            <button class="seg-item" data-value="4">4 名</button>
+          </div>
         </div>
         <div class="field-group">
           <label class="field-label">每回合时间</label>
@@ -206,43 +206,25 @@
               <button class="btn btn-primary btn-sm" id="btn-room-link">📋 复制邀请链接（朋友点开直接进）</button>
               <input type="text" id="p2p-room-link" class="expr-input" readonly autocomplete="off">
             </div>
-            <div class="p2p-note">两种办法二选一：<b>把邀请链接发朋友</b>（他点开直接进房间），或者<b>把房间号发给朋友、让他自己输</b>。都不用开任何服务器。</div>
+            <div class="p2p-seats hidden" id="p2p-seats">
+              <div class="p2p-seats-head">房间里已有 <b id="p2p-seats-count">1/2</b> 人</div>
+              <ul class="p2p-seats-list" id="p2p-seats-list"></ul>
+              <button class="btn btn-primary btn-sm" id="btn-room-start">▶ 开始对战</button>
+            </div>
+            <div class="p2p-note">两种办法二选一：<b>把邀请链接发朋友</b>（他点开直接进房间），或者<b>把房间号发给朋友、让他自己输</b>。人齐会自动开局，也可以点「开始对战」提前开打。</div>
           </div>
           <div class="p2p-guest-col">
             <label class="field-label">我加入：输入房主的房间号（或直接点开他发来的链接）</label>
             <div class="p2p-join-row">
               <input type="text" id="p2p-room-input" class="expr-input" maxlength="8" inputmode="alphanumeric"
-                     placeholder="6 位房间号" autocomplete="off">
+                     placeholder="5 位房间号" autocomplete="off">
               <button class="btn btn-primary btn-sm" id="btn-room-join">加入房间</button>
             </div>
           </div>
         </div>
       </div>
 
-      <div class="lobby-cols" id="lobby-cols">
-        <div class="lobby-col">
-          <h3 class="lobby-h">创建房间</h3>
-          <button class="btn btn-primary btn-lg" id="btn-mp-create">创建并等待对手</button>
-          <label class="check-inline lobby-fillai">
-            <input type="checkbox" id="chk-mp-fillai">
-            <span>人机补齐：无对手时用 AI 顶替（含掉线接管）</span>
-          </label>
-        </div>
-
-        <div class="lobby-col">
-          <h3 class="lobby-h">加入房间</h3>
-          <div class="field-group">
-            <label class="field-label">房间号</label>
-            <input type="text" id="mp-code" class="expr-input" placeholder="例如 A1B2" maxlength="8" autocomplete="off">
-          </div>
-          <button class="btn btn-ghost btn-lg" id="btn-mp-join">加入房间</button>
-          <button class="btn btn-ghost btn-sm hidden" id="btn-mp-copy">复制房号</button>
-        </div>
-      </div>
-
       <div class="lobby-status hidden" id="lobby-status"></div>
-
-      <div class="share-box hidden" id="mp-share"></div>
 
       <div class="lobby-actions">
         <button class="btn btn-ghost btn-sm" id="btn-mp-tutorial">联机教程</button>
@@ -683,11 +665,10 @@
 <script src="js/sketch.js"></script>
 <script src="js/render.js"></script>
 <script src="js/tutorial.js"></script>
-<script src="js/net.js"></script>
-<!-- 联机房间：PeerJS 公共云信令做「牵线」（零部署、零服务器），对局数据走 WebRTC 直连 -->
+<!-- 联机：PeerJS 只负责「互相找到对方」（信令，走公共云，零部署）；对局数据走 WebRTC 点对点直连 -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.5/peerjs.min.js"></script>
 <script>
-/* PeerJS 加载兜底：主 CDN 被墙 / 超时时自动换其它 CDN，保证「房间联机」始终可用 */
+/* PeerJS 加载兜底：主 CDN 被墙 / 超时时自动换其它 CDN，保证联机始终可用 */
 (function () {
   if (window.Peer) return;
   var alts = [
@@ -704,7 +685,7 @@
   })(0);
 })();
 </script>
-<script src="js/room.js"></script>
+<script src="js/p2p.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/main.js"></script>
 </body>

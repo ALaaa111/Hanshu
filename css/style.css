@@ -621,14 +621,6 @@ input { font-family: inherit; }
   padding: 26px 28px; border-top: 3px solid var(--green);
 }
 .lobby-tip { margin: 0 0 18px; font-size: 13px; color: var(--text-soft); line-height: 1.6; }
-.lobby-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; margin: 6px 0 16px; }
-.lobby-col {
-  border: 1px solid var(--line); background: var(--panel-soft); padding: 16px 16px 18px;
-  display: flex; flex-direction: column; gap: 12px;
-}
-.lobby-h { margin: 0; font-size: 15.5px; color: var(--green-deep); }
-.lobby-col .btn-lg { margin-top: 2px; }
-.lobby-col .btn { width: 100%; }
 .lobby-status {
   margin: 4px 0 14px; padding: 12px 14px; font-size: 13.5px; line-height: 1.65;
   border: 1px solid var(--line); background: var(--green-soft); color: var(--text);
@@ -642,49 +634,13 @@ input { font-family: inherit; }
 .lobby-status b { color: var(--green-deep); letter-spacing: .5px; }
 .lobby-actions { display: flex; justify-content: flex-start; gap: 8px; }
 .btn-sm { padding: 6px 12px; font-size: 13px; }
-#btn-mp-copy { margin-top: 8px; }
 
-/* 人机补齐勾选框 */
-.check-inline {
-  display: flex; align-items: center; gap: 8px;
-  margin-top: 10px; font-size: 13px; color: var(--text-soft); cursor: pointer;
-  user-select: none;
-}
-.check-inline input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--green); cursor: pointer; }
-.lobby-fillai { margin-top: 2px; }
-
-/* 一键分享链接（自动获取公网 IP 后生成） */
-.share-box {
-  margin: 2px 0 14px; padding: 12px 14px; font-size: 12.5px;
-  border: 1px solid var(--green); background: #eafaf0;
-}
-.share-title { color: var(--green-deep); margin-bottom: 8px; font-size: 13px; line-height: 1.6; }
-.share-line { display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
-.share-tag {
-  flex: 0 0 auto; background: var(--green-light); color: var(--green-dark);
-  border: 1px solid var(--line); padding: 2px 7px; font-size: 11.5px;
-}
-.share-url {
-  flex: 1 1 200px; min-width: 0; background: #fff; border: 1px solid var(--line);
-  padding: 4px 8px; font-family: Consolas, "Courier New", monospace; color: var(--green-dark);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-
-/* 点对点联机（房主即服务器）：手动复制连接码 */
+/* 点对点联机（房主即服务器）：房间号 + 邀请链接 */
 .p2p-box {
   margin: 2px 0 16px; padding: 12px 14px;
   border: 1px solid var(--line); background: #f6fbf8;
 }
 .p2p-box .field-hint { margin-bottom: 10px; }
-.p2p-row { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
-.p2p-code {
-  width: 100%; box-sizing: border-box; resize: vertical;
-  font-family: Consolas, "Courier New", ui-monospace, monospace;
-  font-size: 11px; line-height: 1.5; color: var(--green-dark);
-  background: #fff; border: 1px solid var(--line); padding: 6px 8px;
-  word-break: break-all;
-}
-.p2p-code[readonly] { background: #f2f7f4; }
 
 /* 房间号模式（点对点联机主入口） */
 .p2p-room { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 4px 0 10px; }
@@ -711,12 +667,6 @@ input { font-family: inherit; }
   flex: 1 1 220px; min-width: 0; font-size: 13px; letter-spacing: 0;
   color: var(--green-dark); background: #fff;
 }
-.link-toggle {
-  background: none; border: none; color: var(--green-dark);
-  font-size: 12.5px; cursor: pointer; padding: 4px 0; margin: 2px 0 4px;
-  text-decoration: underline dotted; text-underline-offset: 3px;
-}
-.link-toggle:hover { color: var(--green); }
 .p2p-join-row { display: flex; gap: 8px; margin-top: 6px; }
 .p2p-join-row .expr-input {
   width: 130px; flex: 0 0 auto; text-align: center;
@@ -724,16 +674,28 @@ input { font-family: inherit; }
   font-family: Consolas, "Courier New", ui-monospace, monospace;
 }
 .p2p-join-row .btn { flex: 1 1 auto; }
-.p2p-manual { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 8px; }
-.p2p-manual summary { font-size: 12.5px; color: var(--text-soft); cursor: pointer; padding: 2px 0; }
-.p2p-manual[open] summary { margin-bottom: 4px; color: var(--green-dark); }
-@media (max-width: 560px) {
-  .p2p-room { grid-template-columns: 1fr; }
+
+/* 房间内玩家列表（房主可见，实时刷新） */
+.p2p-seats {
+  margin: 8px 0 6px; padding: 10px 12px;
+  background: #fff; border: 1.5px solid var(--green); border-radius: 8px;
 }
+.p2p-seats-head { font-size: 13px; color: var(--text-soft); margin-bottom: 6px; }
+.p2p-seats-head b { color: var(--green-deep); }
+.p2p-seats-list { list-style: none; margin: 0 0 8px; padding: 0; }
+.p2p-seats-list li {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; padding: 3px 0; color: var(--text);
+}
+.p2p-seats-list .seat-dot {
+  width: 9px; height: 9px; border-radius: 50%; background: var(--green); flex: 0 0 auto;
+}
+.p2p-seats-list .seat-me { color: var(--green-deep); font-weight: 700; }
+.p2p-seats-list .seat-wait { color: var(--text-soft); font-style: italic; }
+.p2p-seats .btn { width: 100%; }
 
 @media (max-width: 560px) {
-  .lobby-cols { grid-template-columns: 1fr; }
-  .p2p-row .btn { flex: 1 1 100%; }
+  .p2p-room { grid-template-columns: 1fr; }
 }
 .syntax-grid { width: 100%; border-collapse: collapse; margin: 6px 0 4px; }
 .syntax-grid th, .syntax-grid td { border: 1px solid var(--line); padding: 5px 9px; text-align: left; font-size: 12.5px; }
@@ -781,6 +743,10 @@ input { font-family: inherit; }
   padding: 1px 6px; font-family: Consolas, monospace; color: var(--green-dark);
 }
 .tut-body ul { margin: 5px 0; padding-left: 19px; }
+/* 教程正文里的行内强调（原战斗日志的同名样式已随日志面板移除，这里补一份通用版） */
+.log-line { font-weight: 700; color: var(--green-dark); }
+.log-line.bad { color: var(--danger); }
+.log-line.good { color: var(--green); }
 .tut-task {
   margin-top: 7px; padding: 7px 11px; border-left: 3px solid var(--green);
   background: var(--green-soft); font-size: 12.5px; color: var(--green-deep);

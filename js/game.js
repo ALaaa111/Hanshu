@@ -230,11 +230,11 @@
   };
 
   /**
-   * 联机镜像：用服务器权威下发的地形圆与士兵落座重建一局。
+   * 联机镜像：用房主（权威端）下发的地形圆与士兵落座重建一局。
    * @param {number[][]} circles  地形圆 [x,y,r]
    * @param {{team:number,x:number,y:number}[]} positions  已落座的士兵（按阵营归并）
    * @param {number} currentTurn  首发方（玩家下标）
-   * @param {boolean} remote  true=客户端镜像（本地不推进回合）；false=服务器权威对局
+   * @param {boolean} remote  true=客人镜像（本地不推进回合）；false=房主权威对局
    */
   GW.Game.prototype.loadBattle = function (circles, positions, currentTurn, remote) {
     this.terrain = new GW.Terrain(circles);
@@ -925,8 +925,8 @@
   };
 
   /* ---------------- 联机共用：消息打包 ----------------
-   * 服务器（server.js）与点对点房主（浏览器）都用这两个函数生成下行消息，
-   * 保证「服务器联机」和「点对点联机」两种模式下，客人收到的数据完全一致。 */
+   * 房主（权威端）用这两个函数生成下行消息，客人端按同一份格式解析，
+   * 保证「本机权威状态」与「客人镜像」看到的数据完全一致。 */
 
   /** 弹道 → 可 JSON 化的数据（坐标保留 3 位小数，体积约为原始的 1/2，误差 < 0.02 像素） */
   GW.packShot = function (shot) {
